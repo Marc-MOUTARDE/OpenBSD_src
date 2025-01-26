@@ -69,6 +69,9 @@
 
 #define	NMBCLUSTERS	(256 * 1024)		/* max cluster allocation */
 
+#define CACHE_LINE_SHIFT 6
+#define CACHE_LINE_SIZE (1 << CACHE_LINE_SHIFT)
+
 #ifndef	MSGBUFSIZE
 #define	MSGBUFSIZE	(32 * PAGE_SIZE)	/* default message buffer size */
 #endif

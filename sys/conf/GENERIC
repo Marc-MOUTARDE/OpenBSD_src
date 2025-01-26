@@ -54,6 +54,7 @@ option		PIPEX		# Ppp IP EXtension, for npppd
 option		MROUTING	# Multicast router
 option		MPLS		# Multi-Protocol Label Switching
 #option		BFD		# Bi-directional Forwarding Detection
+option      KTLS        # Kernel Transport Layer Security
 
 #mpath0		at root		# SCSI Multipathing
 #scsibus*	at mpath?

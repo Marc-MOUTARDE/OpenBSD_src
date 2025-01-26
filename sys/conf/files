@@ -785,6 +785,7 @@ file kern/tty_msts.c			msts			needs-flag
 file kern/tty_endrun.c			endrun			needs-flag
 file kern/tty_subr.c
 file kern/tty_tty.c
+file kern/uipc_ktls.c           ktls
 file kern/uipc_domain.c
 file kern/uipc_mbuf.c
 file kern/uipc_mbuf2.c
@@ -940,6 +941,7 @@ file crypto/cryptosoft.c		ipsec | crypto
 file crypto/xform.c			ipsec | crypto
 file crypto/xform_ipcomp.c		ipsec | crypto
 file crypto/arc4.c
+# file crypto/ktls_ocf.c          ktls
 file crypto/michael.c			wlan
 file crypto/cmac.c			wlan
 file crypto/hmac.c			wlan | (softraid & crypto)
