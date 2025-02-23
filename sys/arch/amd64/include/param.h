@@ -76,6 +76,8 @@
 #define	MSGBUFSIZE	(32 * PAGE_SIZE)	/* default message buffer size */
 #endif
 
+#define MAXMEMDOM 8
+
 #define __HAVE_ACPI
 
 #endif /* _KERNEL */

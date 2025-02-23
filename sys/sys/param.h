@@ -156,6 +156,11 @@
 #define dbtob(x)        ((x) << _DEV_BSHIFT)
 #endif
 
+/* bytes to click */
+#ifndef btoc
+#define btoc(x) (((x) + PAGE_MASK) >> PAGE_SHIFT)
+#endif
+
 /*
  * MAXPATHLEN defines the longest permissible path length after expanding
  * symbolic links. It is used to allocate a temporary buffer from the buffer

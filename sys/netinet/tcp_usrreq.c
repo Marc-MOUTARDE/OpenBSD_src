@@ -78,6 +78,7 @@
 #include <sys/sysctl.h>
 #include <sys/domain.h>
 #include <sys/kernel.h>
+#include <sys/ktls.h>
 #include <sys/pool.h>
 #include <sys/proc.h>
 
@@ -328,7 +329,10 @@ tcp_ctloutput(int op, struct socket *so, int level, int optname,
 	struct inpcb *inp;
 	struct tcpcb *tp;
 	int i;
-
+#ifdef KTLS
+	struct tls_enable tls;
+#endif
+	
 	inp = sotoinpcb(so);
 	if (inp == NULL)
 		return (ECONNRESET);
@@ -392,7 +396,6 @@ tcp_ctloutput(int op, struct socket *so, int level, int optname,
 				error = EPERM;
 				break;
 			}
-
 			if (tp->t_flags & TF_SIGNATURE) {
 				error = EPERM;
 				break;
@@ -453,6 +456,26 @@ tcp_ctloutput(int op, struct socket *so, int level, int optname,
 		case TCP_MD5SIG:
 			m->m_len = sizeof(int);
 			*mtod(m, int *) = tp->t_flags & TF_SIGNATURE;
+			break;
+#endif
+#ifdef KTLS
+		case TCP_TXTLS_ENABLE:
+			error = ktls_copyin_tls_enable(&tls, level, optname, m);
+			if (error) {
+				break;
+			}
+			error = ktls_enable_tx(so, &tls);
+			ktls_cleanup_tls_enable(&tls);
+			break;
+		case TCP_TXTLS_MODE:
+			break;
+		case TCP_RXTLS_ENABLE:
+			error = ktls_copyin_tls_enable(&tls, level, optname, m);
+			if (error) {
+				break;
+			}
+			error = ktls_enable_rx(so, &tls);
+			ktls_cleanup_tls_enable(&tls);
 			break;
 #endif
 		default:

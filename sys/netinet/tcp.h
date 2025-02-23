@@ -217,6 +217,10 @@ struct tcp_info {
 #define	TCP_MD5SIG		0x04   /* enable TCP MD5 signature option */
 #define	TCP_SACK_ENABLE		0x08   /* enable SACKs (if disabled by def.) */
 #define	TCP_INFO		0x09   /* retrieve tcp_info structure */
-#define	TCP_NOPUSH		0x10   /* don't push last block of write */
+#define TCP_NOPUSH              0x10   /* don't push last block of write */
+#define TCP_TXTLS_ENABLE        0x27   /* TLS framing and encryption for transmit */
+#define TCP_TXTLS_MODE          0x28   /* Transmit TLS mode */
+#define TCP_RXTLS_ENABLE        0x29   /* TLS framing and encryption for receive */
+#define TCP_RXTLS_MODE          0x2a   /* Receive TLS mode */
 
 #endif /* _NETINET_TCP_H_ */

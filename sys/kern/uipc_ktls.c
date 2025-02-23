@@ -25,25 +25,25 @@
  * SUCH DAMAGE.
  */
 
+#include "amd64/include/param.h"
 #include <sys/cdefs.h>
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/domain.h>
 #include <sys/endian.h>
 #include <sys/ktls.h>
 #include <sys/lock.h>
+#include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/mutex.h>
-#include <sys/rmlock.h>
 #include <sys/proc.h>
 #include <sys/protosw.h>
-#include <sys/refcount.h>
-#include <sys/smp.h>
+#include <sys/refcnt.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
-#include <sys/taskqueue.h>
+#include <sys/systm.h>
+#include <sys/task.h>
 #include <sys/kthread.h>
 #include <sys/uio.h>
 #include <sys/vmmeter.h>
@@ -58,22 +58,24 @@
 #include <net/rss_config.h>
 #endif
 #include <net/route.h>
-#include <net/route/nhop.h>
 #include <netinet/in.h>
+#include <netinet/ip.h>
 #include <netinet/in_pcb.h>
+#include <netinet/tcp.h>
+#include <netinet/tcp_seq.h>
+#include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #ifdef TCP_OFFLOAD
 #include <netinet/tcp_offload.h>
 #endif
-#include <opencrypto/cryptodev.h>
-#include <opencrypto/ktls.h>
-#include <vm/vm.h>
-#include <vm/vm_pageout.h>
-#include <vm/vm_page.h>
-#include <vm/vm_pagequeue.h>
+#include <lib/libkern/libkern.h>
+#include <crypto/cryptodev.h>
+#include <crypto/ktls.h>
+#include <uvm/uvm.h>
+#include <uvm/uvm_page.h>
 
 struct ktls_wq {
-	struct mtx	mtx;
+	struct mutex	mtx;
 	STAILQ_HEAD(, mbuf) m_head;
 	STAILQ_HEAD(, socket) so_head;
 	bool		running;
@@ -89,18 +91,28 @@ struct ktls_reclaim_thread {
 
 struct ktls_domain_info {
 	int count;
-	int cpu[MAXCPU];
+	int cpu[MAXCPUS];
 	struct ktls_reclaim_thread reclaim_td;
 };
 
 struct ktls_domain_info ktls_domains[MAXMEMDOM];
 static struct ktls_wq *ktls_wq;
 static struct proc *ktls_proc;
-static uma_zone_t ktls_session_zone;
 static uma_zone_t ktls_buffer_zone;
-static uint16_t ktls_cpuid_lookup[MAXCPU];
+static uint16_t ktls_cpuid_lookup[MAXCPUS];
 static int ktls_init_state;
-static struct sx ktls_init_lock;
+static struct mutex ktls_init_lock;
+
+//TODO add openbsd SYSCTL
+static u_int ktls_maxlen = 16384;
+static int ktls_number_threads;
+unsigned int ktls_ifnet_max_rexmit_pct = 2;
+static bool ktls_offload_enable = true;
+static bool ktls_cbc_enable = true;
+static bool ktls_sw_buffer_cache = true;
+static int ktls_max_reclaim = 1024;
+
+#if 0
 SX_SYSINIT(ktls_init_lock, &ktls_init_lock, "ktls init");
 
 SYSCTL_NODE(_kern_ipc, OID_AUTO, tls, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
@@ -111,42 +123,35 @@ SYSCTL_NODE(_kern_ipc_tls, OID_AUTO, stats, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
 #ifdef RSS
 static int ktls_bind_threads = 1;
 #else
-static int ktls_bind_threads;
+static int ktls_bind_threads = 0;
 #endif
 SYSCTL_INT(_kern_ipc_tls, OID_AUTO, bind_threads, CTLFLAG_RDTUN,
     &ktls_bind_threads, 0,
     "Bind crypto threads to cores (1) or cores and domains (2) at boot");
 
-static u_int ktls_maxlen = 16384;
 SYSCTL_UINT(_kern_ipc_tls, OID_AUTO, maxlen, CTLFLAG_RDTUN,
     &ktls_maxlen, 0, "Maximum TLS record size");
 
-static int ktls_number_threads;
 SYSCTL_INT(_kern_ipc_tls_stats, OID_AUTO, threads, CTLFLAG_RD,
     &ktls_number_threads, 0,
     "Number of TLS threads in thread-pool");
 
-unsigned int ktls_ifnet_max_rexmit_pct = 2;
 SYSCTL_UINT(_kern_ipc_tls, OID_AUTO, ifnet_max_rexmit_pct, CTLFLAG_RWTUN,
     &ktls_ifnet_max_rexmit_pct, 2,
     "Max percent bytes retransmitted before ifnet TLS is disabled");
 
-static bool ktls_offload_enable = true;
 SYSCTL_BOOL(_kern_ipc_tls, OID_AUTO, enable, CTLFLAG_RWTUN,
     &ktls_offload_enable, 0,
     "Enable support for kernel TLS offload");
 
-static bool ktls_cbc_enable = true;
 SYSCTL_BOOL(_kern_ipc_tls, OID_AUTO, cbc_enable, CTLFLAG_RWTUN,
     &ktls_cbc_enable, 1,
     "Enable support of AES-CBC crypto for kernel TLS");
 
-static bool ktls_sw_buffer_cache = true;
 SYSCTL_BOOL(_kern_ipc_tls, OID_AUTO, sw_buffer_cache, CTLFLAG_RDTUN,
     &ktls_sw_buffer_cache, 1,
     "Enable caching of output buffers for SW encryption");
 
-static int ktls_max_reclaim = 1024;
 SYSCTL_INT(_kern_ipc_tls, OID_AUTO, max_reclaim, CTLFLAG_RWTUN,
     &ktls_max_reclaim, 128,
     "Max number of 16k buffers to reclaim in thread context");
@@ -290,7 +295,9 @@ SYSCTL_COUNTER_U64(_kern_ipc_tls_toe, OID_AUTO, chacha20, CTLFLAG_RD,
     "Active number of TOE TLS sessions using Chacha20-Poly1305");
 #endif
 
-static MALLOC_DEFINE(M_KTLS, "ktls", "Kernel TLS");
+#endif
+
+// static MALLOC_DEFINE(M_KTLS, "ktls", "Kernel TLS");
 
 static void ktls_reclaim_thread(void *ctx);
 static void ktls_reset_receive_tag(void *context, int pending);
@@ -298,13 +305,14 @@ static void ktls_reset_send_tag(void *context, int pending);
 static void ktls_work_thread(void *ctx);
 
 int
-ktls_copyin_tls_enable(struct sockopt *sopt, struct tls_enable *tls)
+ktls_copyin_tls_enable(struct tls_enable *tls, int level, int optname, struct mbuf *m)
 {
-	struct tls_enable_v0 tls_v0;
+	// TODO add options to socket
+        struct tls_enable_v0 tls_v0;
 	int error;
 	uint8_t *cipher_key = NULL, *iv = NULL, *auth_key = NULL;
 
-	if (sopt->sopt_valsize == sizeof(tls_v0)) {
+	if (m->m_len == sizeof(tls_v0)) {
 		error = sooptcopyin(sopt, &tls_v0, sizeof(tls_v0), sizeof(tls_v0));
 		if (error != 0)
 			goto done;
@@ -320,8 +328,9 @@ ktls_copyin_tls_enable(struct sockopt *sopt, struct tls_enable *tls)
 		tls->flags = tls_v0.flags;
 		tls->tls_vmajor = tls_v0.tls_vmajor;
 		tls->tls_vminor = tls_v0.tls_vminor;
-	} else
+	} else {
 		error = sooptcopyin(sopt, tls, sizeof(*tls), sizeof(*tls));
+	}
 
 	if (error != 0)
 		return (error);
@@ -351,7 +360,7 @@ ktls_copyin_tls_enable(struct sockopt *sopt, struct tls_enable *tls)
 			if (error != 0)
 				goto done;
 		} else {
-			bcopy(tls->cipher_key, cipher_key, tls->cipher_key_len);
+			memmove(cipher_key, tls->cipher_key, tls->cipher_key_len);
 		}
 	}
 	if (tls->iv_len != 0) {
@@ -361,7 +370,7 @@ ktls_copyin_tls_enable(struct sockopt *sopt, struct tls_enable *tls)
 			if (error != 0)
 				goto done;
 		} else {
-			bcopy(tls->iv, iv, tls->iv_len);
+			memmove(iv, tls->iv, tls->iv_len);
 		}
 	}
 	if (tls->auth_key_len != 0) {
@@ -371,7 +380,7 @@ ktls_copyin_tls_enable(struct sockopt *sopt, struct tls_enable *tls)
 			if (error != 0)
 				goto done;
 		} else {
-			bcopy(tls->auth_key, auth_key, tls->auth_key_len);
+			memmove(auth_key, tls->auth_key, tls->auth_key_len);
 		}
 	}
 	tls->cipher_key = cipher_key;
@@ -380,9 +389,13 @@ ktls_copyin_tls_enable(struct sockopt *sopt, struct tls_enable *tls)
 
 done:
 	if (error != 0) {
-		zfree(cipher_key, M_KTLS);
-		zfree(iv, M_KTLS);
-		zfree(auth_key, M_KTLS);
+		memset(cipher_key, 0, tls->cipher_key_len);
+		memset(iv, 0, tls->iv_len);
+		memset(auth_key, 0, tls->auth_key_len);
+
+		free(cipher_key, M_KTLS, 0);
+		free(iv, M_KTLS, 0);
+		free(auth_key, M_KTLS, 0);
 	}
 
 	return (error);
@@ -391,9 +404,17 @@ done:
 void
 ktls_cleanup_tls_enable(struct tls_enable *tls)
 {
-	zfree(__DECONST(void *, tls->cipher_key), M_KTLS);
-	zfree(__DECONST(void *, tls->iv), M_KTLS);
-	zfree(__DECONST(void *, tls->auth_key), M_KTLS);
+	void *cipher_key = (void *)tls->cipher_key;
+	void *iv = (void *)tls->iv;
+	void *auth_key = (void *)tls->auth_key;
+
+	memset(cipher_key, 0, tls->cipher_key_len);
+	memset(iv, 0, tls->iv_len);
+	memset(auth_key, 0, tls->auth_key_len);
+
+	free(cipher_key, M_KTLS, tls->cipher_key_len);
+	free(iv, M_KTLS, tls->iv_len);
+	free(auth_key, M_KTLS, tls->auth_key_len);
 }
 
 static u_int
@@ -430,12 +451,12 @@ ktls_get_cpu(struct socket *so)
 static int
 ktls_buffer_import(void *arg, void **store, int count, int domain, int flags)
 {
-	vm_page_t m;
+	struct vm_page *m;
 	int i, req;
 
-	KASSERT((ktls_maxlen & PAGE_MASK) == 0,
-	    ("%s: ktls max length %d is not page size-aligned",
-	    __func__, ktls_maxlen));
+	KASSERTMSG((ktls_maxlen & PAGE_MASK) == 0,
+	    "%s: ktls max length %d is not page size-aligned",
+	    __func__, ktls_maxlen);
 
 	req = VM_ALLOC_WIRED | VM_ALLOC_NODUMP | malloc2vm_flags(flags);
 	for (i = 0; i < count; i++) {
@@ -458,8 +479,8 @@ ktls_buffer_release(void *arg __unused, void **store, int count)
 	for (i = 0; i < count; i++) {
 		m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)store[i]));
 		for (j = 0; j < atop(ktls_maxlen); j++) {
-			(void)vm_page_unwire_noq(m + j);
-			vm_page_free(m + j);
+			uvm_pageunwire(m + j);
+			uvm_pagefree(m + j);
 		}
 	}
 }
@@ -467,7 +488,7 @@ ktls_buffer_release(void *arg __unused, void **store, int count)
 static void
 ktls_free_mext_contig(struct mbuf *m)
 {
-	M_ASSERTEXTPG(m);
+	KASSERT(m);
 	uma_zfree(ktls_buffer_zone, (void *)PHYS_TO_DMAP(m->m_epg_pa[0]));
 }
 
@@ -478,29 +499,32 @@ ktls_init(void)
 	struct pcpu *pc;
 	int count, domain, error, i;
 
-	ktls_wq = malloc(sizeof(*ktls_wq) * (mp_maxid + 1), M_KTLS,
+	ktls_wq = malloc(sizeof(*ktls_wq) * ncpus, M_KTLS,
 	    M_WAITOK | M_ZERO);
 
-	ktls_session_zone = uma_zcreate("ktls_session",
-	    sizeof(struct ktls_session),
-	    NULL, NULL, NULL, NULL,
-	    UMA_ALIGN_CACHE, 0);
-
 	if (ktls_sw_buffer_cache) {
-		ktls_buffer_zone = uma_zcache_create("ktls_buffers",
-		    roundup2(ktls_maxlen, PAGE_SIZE), NULL, NULL, NULL, NULL,
-		    ktls_buffer_import, ktls_buffer_release, NULL,
-		    UMA_ZONE_FIRSTTOUCH | UMA_ZONE_NOTRIM);
+		ktls_buffer_zone = uma_zcache_create(
+						     "ktls_buffers", // name
+						     roundup(ktls_maxlen, PAGE_SIZE), // size
+						     NULL, // ctor
+						     NULL, // dtor
+						     NULL, // zinit
+						     NULL, // zfini
+						     ktls_buffer_import, // zimport
+						     ktls_buffer_release, // zrelease
+						     NULL, // args
+						     UMA_ZONE_FIRSTTOUCH | UMA_ZONE_NOTRIM); // flags
 	}
 
 	/*
 	 * Initialize the workqueues to run the TLS work.  We create a
 	 * work queue for each CPU.
 	 */
-	CPU_FOREACH(i) {
+	for (i = 0; i < ncpus; i++) {
 		STAILQ_INIT(&ktls_wq[i].m_head);
 		STAILQ_INIT(&ktls_wq[i].so_head);
-		mtx_init(&ktls_wq[i].mtx, "ktls work queue", NULL, MTX_DEF);
+		mtx_init(&ktls_wq[i].mtx, 0);
+		#if 0
 		if (ktls_bind_threads > 1) {
 			pc = pcpu_find(i);
 			domain = pc->pc_domain;
@@ -508,6 +532,7 @@ ktls_init(void)
 			ktls_domains[domain].cpu[count] = i;
 			ktls_domains[domain].count++;
 		}
+		#endif
 		ktls_cpuid_lookup[ktls_number_threads] = i;
 		ktls_number_threads++;
 	}
@@ -516,6 +541,7 @@ ktls_init(void)
 	 * If we somehow have an empty domain, fall back to choosing
 	 * among all KTLS threads.
 	 */
+	#if 0
 	if (ktls_bind_threads > 1) {
 		for (i = 0; i < vm_ndomains; i++) {
 			if (ktls_domains[i].count == 0) {
@@ -524,11 +550,12 @@ ktls_init(void)
 			}
 		}
 	}
+	#endif
 
 	/* Start kthreads for each workqueue. */
-	CPU_FOREACH(i) {
-		error = kproc_kthread_add(ktls_work_thread, &ktls_wq[i],
-		    &ktls_proc, &td, 0, 0, "KTLS", "thr_%d", i);
+	for (i = 0; i < ncpus; i++) {
+		error = kthread_create(ktls_work_thread, &ktls_wq[i],
+				       &ktls_proc, "KTLS");
 		if (error) {
 			printf("Can't add KTLS thread %d error %d\n", i, error);
 			return (error);
@@ -693,7 +720,7 @@ ktls_create_session(struct socket *so, struct tls_enable *en,
 	if (error != 0)
 		return (error);
 
-	tls = uma_zalloc(ktls_session_zone, M_WAITOK | M_ZERO);
+	tls = malloc(sizeof(ktls_session), M_KTLS, M_WAITOK | M_ZERO);
 
 	counter_u64_add(ktls_offload_active, 1);
 
@@ -786,12 +813,12 @@ ktls_create_session(struct socket *so, struct tls_enable *en,
 		tls->params.auth_key_len = en->auth_key_len;
 		tls->params.auth_key = malloc(en->auth_key_len, M_KTLS,
 		    M_WAITOK);
-		bcopy(en->auth_key, tls->params.auth_key, en->auth_key_len);
+		memmove(en->auth_key, tls->params.auth_key, en->auth_key_len);
 	}
 
 	tls->params.cipher_key_len = en->cipher_key_len;
 	tls->params.cipher_key = malloc(en->cipher_key_len, M_KTLS, M_WAITOK);
-	bcopy(en->cipher_key, tls->params.cipher_key, en->cipher_key_len);
+	memmove(en->cipher_key, tls->params.cipher_key, en->cipher_key_len);
 
 	/*
 	 * This holds the implicit portion of the nonce for AEAD
@@ -800,7 +827,7 @@ ktls_create_session(struct socket *so, struct tls_enable *en,
 	 */
 	if (en->iv_len != 0) {
 		tls->params.iv_len = en->iv_len;
-		bcopy(en->iv, tls->params.iv, en->iv_len);
+		memmove(en->iv, tls->params.iv, en->iv_len);
 
 		/*
 		 * For TLS 1.2 with GCM, generate an 8-byte nonce as a
@@ -823,7 +850,7 @@ ktls_clone_session(struct ktls_session *tls, int direction)
 {
 	struct ktls_session *tls_new;
 
-	tls_new = uma_zalloc(ktls_session_zone, M_WAITOK | M_ZERO);
+	tls_new = malloc(sizeof(struct ktls_session), M_KTLS, M_WAITOK | M_ZERO);
 
 	counter_u64_add(ktls_offload_active, 1);
 
@@ -2048,7 +2075,7 @@ ktls_destroy(struct ktls_session *tls)
 	}
 	explicit_bzero(tls->params.iv, sizeof(tls->params.iv));
 
-	uma_zfree(ktls_session_zone, tls);
+	free(tls, M_KTLS, sizeof(struct ktls_session));
 }
 
 void
@@ -2320,7 +2347,7 @@ ktls_detach_record(struct sockbuf *sb, int len)
 		n->m_data = m->m_data + remain;
 		mb_dupcl(n, m);
 	} else {
-		bcopy(mtod(m, caddr_t) + remain, mtod(n, caddr_t), n->m_len);
+		memmove(mtod(m, caddr_t) + remain, mtod(n, caddr_t), n->m_len);
 	}
 
 	/* Trim 'm' and update accounting. */

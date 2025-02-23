@@ -177,7 +177,6 @@ struct m_snd_tag;
 struct mbuf;
 struct sockbuf;
 struct socket;
-struct sockopt;
 
 struct ktls_session {
 	struct ktls_ocf_session *ocf_session;
@@ -218,7 +217,7 @@ typedef enum {
 
 void ktls_check_rx(struct sockbuf *sb);
 void ktls_cleanup_tls_enable(struct tls_enable *tls);
-int ktls_copyin_tls_enable(struct sockopt *sopt, struct tls_enable *tls);
+int ktls_copyin_tls_enable(struct tls_enable *tls, int level, int optname, struct mbuf *m);
 void ktls_disable_ifnet(void *arg);
 int ktls_enable_rx(struct socket *so, struct tls_enable *en);
 int ktls_enable_tx(struct socket *so, struct tls_enable *en);
