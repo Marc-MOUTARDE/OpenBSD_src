@@ -36,6 +36,7 @@
 #define _SYS_SOCKETVAR_H_
 
 #include <sys/event.h>
+#include <sys/ktls.h>
 #include <sys/queue.h>
 #include <sys/sigio.h>				/* for struct sigio_ref */
 #include <sys/task.h>
@@ -105,6 +106,9 @@ struct sockbuf {
 	short	sb_state;		/* [m] socket state on sockbuf */
 	uint64_t sb_timeo_nsecs;	/* [m] timeout for read/write */
 	struct klist sb_klist;		/* [m] list of knotes */
+#ifdef KTLS
+  struct ktls_session *sb_tls_info;
+#endif
 };
 
 #define SB_MAX		(2*1024*1024)	/* default for max chars in sockbuf */

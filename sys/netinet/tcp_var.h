@@ -105,6 +105,10 @@ struct tcpcb {
 #define TF_TMR_2MSL	0x20000000U	/* 2*msl quiet time timer armed */
 #define TF_TMR_DELACK	0x40000000U	/* delayed ack timer armed */
 #define TF_TIMER	TF_TMR_REXMT	/* used to shift with TCPT values */
+#ifdef KTLS
+#define KTLS_NIC_XMIT_ACTIVE_SESSION (1 << 7)
+#define KTLS_NIC_XMIT_DISABLE (1 << 6)
+#endif
 
 	struct	mbuf *t_template;	/* skeletal packet for transmit */
 	struct	inpcb *t_inpcb;		/* back pointer to internet pcb */
@@ -205,6 +209,8 @@ struct tcpcb {
 	u_int	t_rcvoopack;		/* out-of-order packets received */
 	u_int	t_sndrexmitpack;	/* retransmit packets sent */
 	u_int	t_sndzerowin;		/* zero-window updates sent */
+
+  char t_nic_ktls_flags;
 };
 
 #define	intotcpcb(ip)	((struct tcpcb *)(ip)->inp_ppcb)

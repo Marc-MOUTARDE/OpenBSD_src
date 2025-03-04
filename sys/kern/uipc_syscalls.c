@@ -1197,10 +1197,14 @@ sys_setsockopt(struct proc *p, void *v, register_t *retval)
 	error = pledge_sockopt(p, 1, SCARG(uap, level), SCARG(uap, name));
 	if (error)
 		goto bad;
+
+#ifndef KTLS
+	/* MCLBYTES limit is 2Kio. The TLS record can be up to 16Kib */
 	if (SCARG(uap, valsize) > MCLBYTES) {
 		error = EINVAL;
 		goto bad;
 	}
+#endif
 	if (SCARG(uap, val)) {
 		m = m_get(M_WAIT, MT_SOOPTS);
 		if (SCARG(uap, valsize) > MLEN) {

@@ -26,6 +26,7 @@
  */
 
 #include "amd64/include/param.h"
+#include "sys/rwlock.h"
 #include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -307,15 +308,12 @@ static void ktls_work_thread(void *ctx);
 int
 ktls_copyin_tls_enable(struct tls_enable *tls, int level, int optname, struct mbuf *m)
 {
-	// TODO add options to socket
         struct tls_enable_v0 tls_v0;
 	int error;
 	uint8_t *cipher_key = NULL, *iv = NULL, *auth_key = NULL;
 
 	if (m->m_len == sizeof(tls_v0)) {
-		error = sooptcopyin(sopt, &tls_v0, sizeof(tls_v0), sizeof(tls_v0));
-		if (error != 0)
-			goto done;
+		memcpy(&tls_v0, m->m_hdr.mh_data, sizeof(tls_v0));
 		memset(tls, 0, sizeof(*tls));
 		tls->cipher_key = tls_v0.cipher_key;
 		tls->iv = tls_v0.iv;
@@ -329,7 +327,7 @@ ktls_copyin_tls_enable(struct tls_enable *tls, int level, int optname, struct mb
 		tls->tls_vmajor = tls_v0.tls_vmajor;
 		tls->tls_vminor = tls_v0.tls_vminor;
 	} else {
-		error = sooptcopyin(sopt, tls, sizeof(*tls), sizeof(*tls));
+		memcpy(tls, m->m_hdr.mh_data, sizeof(tls_v0));
 	}
 
 	if (error != 0)
@@ -355,33 +353,21 @@ ktls_copyin_tls_enable(struct tls_enable *tls, int level, int optname, struct mb
 	 */
 	if (tls->cipher_key_len != 0) {
 		cipher_key = malloc(tls->cipher_key_len, M_KTLS, M_WAITOK);
-		if (sopt->sopt_td != NULL) {
-			error = copyin(tls->cipher_key, cipher_key, tls->cipher_key_len);
-			if (error != 0)
-				goto done;
-		} else {
-			memmove(cipher_key, tls->cipher_key, tls->cipher_key_len);
-		}
+		error = copyin(tls->cipher_key, cipher_key, tls->cipher_key_len);
+		if (error != 0)
+			goto done;
 	}
 	if (tls->iv_len != 0) {
 		iv = malloc(tls->iv_len, M_KTLS, M_WAITOK);
-		if (sopt->sopt_td != NULL) {
-			error = copyin(tls->iv, iv, tls->iv_len);
-			if (error != 0)
-				goto done;
-		} else {
-			memmove(iv, tls->iv, tls->iv_len);
-		}
+		error = copyin(tls->iv, iv, tls->iv_len);
+		if (error != 0)
+			goto done;
 	}
 	if (tls->auth_key_len != 0) {
 		auth_key = malloc(tls->auth_key_len, M_KTLS, M_WAITOK);
-		if (sopt->sopt_td != NULL) {
-			error = copyin(tls->auth_key, auth_key, tls->auth_key_len);
-			if (error != 0)
-				goto done;
-		} else {
-			memmove(auth_key, tls->auth_key, tls->auth_key_len);
-		}
+		error = copyin(tls->auth_key, auth_key, tls->auth_key_len);
+		if (error != 0)
+			goto done;
 	}
 	tls->cipher_key = cipher_key;
 	tls->iv = iv;
@@ -3366,7 +3352,7 @@ ktls_work_thread(void *ctx)
 }
 
 static void
-ktls_disable_ifnet_help(void *context, int pending __unused)
+ktls_disable_ifnet_help(void *context)
 {
 	struct ktls_session *tls;
 	struct inpcb *inp;
@@ -3430,13 +3416,12 @@ ktls_disable_ifnet(void *arg)
 	struct ktls_session *tls;
 
 	tp = arg;
-	inp = tptoinpcb(tp);
-	INP_WLOCK_ASSERT(inp);
+	inp = tp->t_inpcb;
 	so = inp->inp_socket;
-	SOCK_LOCK(so);
+	rw_enter(&so->so_lock, RW_READ | RW_WRITE);
 	tls = so->so_snd.sb_tls_info;
-	if (tp->t_nic_ktls_xmit_dis == 1) {
-		SOCK_UNLOCK(so);
+	if (tp->t_nic_ktls_flags & KTLS_NIC_XMIT_DISABLE) {
+		rw_exit(&so->so_lock);
 		return;
 	}
 
@@ -3448,8 +3433,10 @@ ktls_disable_ifnet(void *arg)
 
 	(void)ktls_hold(tls);
 	soref(so);
-	tp->t_nic_ktls_xmit_dis = 1;
-	SOCK_UNLOCK(so);
-	TASK_INIT(&tls->disable_ifnet_task, 0, ktls_disable_ifnet_help, tls);
-	(void)taskqueue_enqueue(taskqueue_thread, &tls->disable_ifnet_task);
+	tp->t_nic_ktls_flags |= KTLS_NIC_XMIT_DISABLE;
+	rw_exit(&so->so_lock);
+
+	tls->disable_ifnet_task = (struct task)TASK_INITIALIZER(
+					ktls_disable_ifnet_help, tls);
+	(void)task_add(systqmp, &tls->disable_ifnet_task);
 }
