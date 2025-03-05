@@ -106,7 +106,8 @@ static uint16_t ktls_cpuid_lookup[MAXCPUS];
 static int ktls_init_state;
 static struct mutex ktls_init_lock;
 
-//TODO add openbsd SYSCTL
+// TODO add options to OpenBSD SYSCTL
+// TODO add status counter to OpenBSD sysctls
 static u_int ktls_maxlen = 16384;
 static int ktls_number_threads;
 unsigned int ktls_ifnet_max_rexmit_pct = 2;
@@ -708,7 +709,7 @@ ktls_create_session(struct socket *so, struct tls_enable *en,
 
 	tls = malloc(sizeof(struct ktls_session), M_KTLS, M_WAITOK | M_ZERO);
 
-	counter_u64_add(ktls_offload_active, 1);
+	/* counter_u64_add(ktls_offload_active, 1); */
 
 	refcnt_init(&tls->refcount);
 	if (direction == KTLS_RX) {
@@ -838,7 +839,7 @@ ktls_clone_session(struct ktls_session *tls, int direction)
 
 	tls_new = malloc(sizeof(struct ktls_session), M_KTLS, M_WAITOK | M_ZERO);
 
-	counter_u64_add(ktls_offload_active, 1);
+	/* counter_u64_add(ktls_offload_active, 1); */
 
 	refcnt_init(&tls_new->refcount);
 	if (direction == KTLS_RX) {
@@ -900,13 +901,13 @@ ktls_try_toe(struct socket *so, struct ktls_session *tls, int direction)
 		tls->mode = TCP_TLS_MODE_TOE;
 		switch (tls->params.cipher_algorithm) {
 		case CRYPTO_AES_CBC:
-			counter_u64_add(ktls_toe_cbc, 1);
+			/* counter_u64_add(ktls_toe_cbc, 1); */
 			break;
 		case CRYPTO_AES_NIST_GCM_16:
-			counter_u64_add(ktls_toe_gcm, 1);
+			/* counter_u64_add(ktls_toe_gcm, 1); */
 			break;
 		case CRYPTO_CHACHA20_POLY1305:
-			counter_u64_add(ktls_toe_chacha20, 1);
+			/* counter_u64_add(ktls_toe_chacha20, 1); */
 			break;
 		}
 	}
@@ -1126,13 +1127,13 @@ ktls_try_ifnet(struct socket *so, struct ktls_session *tls, int direction,
 
 	switch (tls->params.cipher_algorithm) {
 	case CRYPTO_AES_CBC:
-		counter_u64_add(ktls_ifnet_cbc, 1);
+		/* counter_u64_add(ktls_ifnet_cbc, 1); */
 		break;
 	case CRYPTO_AES_NIST_GCM_16:
-		counter_u64_add(ktls_ifnet_gcm, 1);
+		/* counter_u64_add(ktls_ifnet_gcm, 1); */
 		break;
 	case CRYPTO_CHACHA20_POLY1305:
-		counter_u64_add(ktls_ifnet_chacha20, 1);
+		/* counter_u64_add(ktls_ifnet_chacha20, 1); */
 		break;
 	default:
 		break;
@@ -1147,13 +1148,13 @@ ktls_use_sw(struct ktls_session *tls)
 	tls->mode = TCP_TLS_MODE_SW;
 	switch (tls->params.cipher_algorithm) {
 	case CRYPTO_AES_CBC:
-		counter_u64_add(ktls_sw_cbc, 1);
+		/* counter_u64_add(ktls_sw_cbc, 1); */
 		break;
 	case CRYPTO_AES_NIST_GCM_16:
-		counter_u64_add(ktls_sw_gcm, 1);
+		/* counter_u64_add(ktls_sw_gcm, 1); */
 		break;
 	case CRYPTO_CHACHA20_POLY1305:
-		counter_u64_add(ktls_sw_chacha20, 1);
+		/* counter_u64_add(ktls_sw_chacha20, 1); */
 		break;
 	}
 }
@@ -1297,7 +1298,7 @@ ktls_enable_rx(struct socket *so, struct tls_enable *en)
 	if (!ktls_offload_enable)
 		return (ENOTSUP);
 
-	counter_u64_add(ktls_offload_enable_calls, 1);
+	/* counter_u64_add(ktls_offload_enable_calls, 1); */
 
 	/*
 	 * This should always be true since only the TCP socket option
@@ -1363,7 +1364,7 @@ ktls_enable_rx(struct socket *so, struct tls_enable *en)
 	if (error)
 		ktls_use_sw(tls);
 
-	counter_u64_add(ktls_offload_total, 1);
+	/* counter_u64_add(ktls_offload_total, 1); */
 
 	return (0);
 }
@@ -1379,7 +1380,7 @@ ktls_enable_tx(struct socket *so, struct tls_enable *en)
 	if (!ktls_offload_enable)
 		return (ENOTSUP);
 
-	counter_u64_add(ktls_offload_enable_calls, 1);
+	/* counter_u64_add(ktls_offload_enable_calls, 1); */
 
 	/*
 	 * This should always be true since only the TCP socket option
@@ -1458,7 +1459,7 @@ ktls_enable_tx(struct socket *so, struct tls_enable *en)
 	INP_WUNLOCK(inp);
 	SOCK_IO_SEND_UNLOCK(so);
 
-	counter_u64_add(ktls_offload_total, 1);
+	/* counter_u64_add(ktls_offload_total, 1); */
 
 	return (0);
 }
@@ -1607,7 +1608,7 @@ ktls_set_tx_mode(struct socket *so, int mode)
 	else
 		error = ktls_try_sw(tls_new, KTLS_TX);
 	if (error) {
-		counter_u64_add(ktls_switch_failed, 1);
+		/* counter_u64_add(ktls_switch_failed, 1); */
 		ktls_free(tls_new);
 		ktls_free(tls);
 		INP_WLOCK(inp);
@@ -1616,7 +1617,7 @@ ktls_set_tx_mode(struct socket *so, int mode)
 
 	error = SOCK_IO_SEND_LOCK(so, SBL_WAIT);
 	if (error) {
-		counter_u64_add(ktls_switch_failed, 1);
+		/* counter_u64_add(ktls_switch_failed, 1); */
 		ktls_free(tls_new);
 		ktls_free(tls);
 		INP_WLOCK(inp);
@@ -1628,7 +1629,7 @@ ktls_set_tx_mode(struct socket *so, int mode)
 	 * session.
 	 */
 	if (tls != so->so_snd.sb_tls_info) {
-		counter_u64_add(ktls_switch_failed, 1);
+		/* counter_u64_add(ktls_switch_failed, 1); */
 		SOCK_IO_SEND_UNLOCK(so);
 		ktls_free(tls_new);
 		ktls_free(tls);
@@ -1658,9 +1659,9 @@ ktls_set_tx_mode(struct socket *so, int mode)
 	ktls_free(tls);
 
 	if (mode == TCP_TLS_MODE_IFNET)
-		counter_u64_add(ktls_switch_to_ifnet, 1);
+		/* counter_u64_add(ktls_switch_to_ifnet, 1); */
 	else
-		counter_u64_add(ktls_switch_to_sw, 1);
+		/* counter_u64_add(ktls_switch_to_sw, 1); */
 
 	return (0);
 }
@@ -1728,7 +1729,7 @@ ktls_reset_receive_tag(void *context)
 		tls->snd_tag = mst;
 		SOCKBUF_UNLOCK(&so->so_rcv);
 
-		counter_u64_add(ktls_ifnet_reset, 1);
+		/* counter_u64_add(ktls_ifnet_reset, 1); */
 	} else {
 		/*
 		 * Just fall back to software decryption if a tag
@@ -1736,7 +1737,7 @@ ktls_reset_receive_tag(void *context)
 		 * If a future input path change switches to another
 		 * interface this connection will resume ifnet TLS.
 		 */
-		counter_u64_add(ktls_ifnet_reset_failed, 1);
+		/* counter_u64_add(ktls_ifnet_reset_failed, 1); */
 	}
 
 out:
@@ -1802,7 +1803,7 @@ ktls_reset_send_tag(void *context, int pending)
 		mtx_pool_unlock(mtxpool_sleep, tls);
 		INP_WUNLOCK(inp);
 
-		counter_u64_add(ktls_ifnet_reset, 1);
+		/* counter_u64_add(ktls_ifnet_reset, 1); */
 
 		/*
 		 * XXX: Should we kick tcp_output explicitly now that
@@ -1817,14 +1818,14 @@ ktls_reset_send_tag(void *context, int pending)
 			tp = tcp_drop(tp, ECONNABORTED);
 			CURVNET_RESTORE();
 			if (tp != NULL) {
-				counter_u64_add(ktls_ifnet_reset_dropped, 1);
+				/* counter_u64_add(ktls_ifnet_reset_dropped, 1); */
 				INP_WUNLOCK(inp);
 			}
 		} else
 			INP_WUNLOCK(inp);
 		NET_EPOCH_EXIT(et);
 
-		counter_u64_add(ktls_ifnet_reset_failed, 1);
+		/* counter_u64_add(ktls_ifnet_reset_failed, 1); */
 
 		/*
 		 * Leave reset_pending true to avoid future tasks while
@@ -1961,7 +1962,7 @@ ktls_destroy(struct ktls_session *tls)
 				 * deadlock.  This should be very
 				 * rare.
 				 */
-				counter_u64_add(ktls_destroy_task, 1);
+				/* counter_u64_add(ktls_destroy_task, 1); */
 				tls->destroy_task = (struct task)TASK_INITIALIZER(
 				    ktls_destroy_help, tls);
 				(void)taskqueue_enqueue(taskqueue_thread,
@@ -2261,7 +2262,7 @@ ktls_check_rx(struct sockbuf *sb)
 	mtx_leave(&wq->mtx);
 	if (!running)
 		wakeup(wq);
-	counter_u64_add(ktls_cnt_rx_queued, 1);
+	/* counter_u64_add(ktls_cnt_rx_queued, 1); */
 }
 
 static struct mbuf *
@@ -2568,7 +2569,7 @@ ktls_decrypt(struct socket *so)
 			 * recoverable at this point, so abort it.
 			 */
 			SOCKBUF_UNLOCK(sb);
-			counter_u64_add(ktls_offload_corrupted_records, 1);
+			/* counter_u64_add(ktls_offload_corrupted_records, 1); */
 
 			ktls_drop(so, error);
 			goto deref;
@@ -2634,7 +2635,7 @@ ktls_decrypt(struct socket *so)
 			break;
 		}
 		if (error) {
-			counter_u64_add(ktls_offload_failed_crypto, 1);
+			/* counter_u64_add(ktls_offload_failed_crypto, 1); */
 
 			SOCKBUF_LOCK(sb);
 			if (sb->sb_tlsdcc == 0) {
@@ -2820,9 +2821,9 @@ ktls_encrypt_record(struct ktls_wq *wq, struct mbuf *m,
 	vm_page_t pg;
 	int error, i, len, off;
 
-	KASSERT((m->m_flags & (M_EXTPG | M_NOTREADY)) == (M_EXTPG | M_NOTREADY),
+	KASSERTMSG((m->m_flags & (M_EXTPG | M_NOTREADY)) == (M_EXTPG | M_NOTREADY),
 	    ("%p not unready & nomap mbuf\n", m));
-	KASSERT(ptoa(m->m_epg_npgs) <= ktls_maxlen,
+	KASSERTMSG(ptoa(m->m_epg_npgs) <= ktls_maxlen,
 	    ("page count %d larger than maximum frame length %d", m->m_epg_npgs,
 	    ktls_maxlen));
 
@@ -2888,7 +2889,7 @@ ktls_batched_records(struct mbuf *m)
 		page_count -= m->m_epg_nrdy;
 		m = m->m_next;
 	}
-	KASSERT(page_count == 0, ("%s: mismatched page count", __func__));
+	KASSERTMSG(page_count == 0, ("%s: mismatched page count", __func__));
 	return (records);
 }
 
@@ -2961,7 +2962,7 @@ ktls_enqueue(struct mbuf *m, struct socket *so, int page_count)
 				STAILQ_INSERT_AFTER(&tls->pending_records, p, m,
 				    m_epg_stailq);
 			mtx_leave(&wq->mtx);
-			counter_u64_add(ktls_cnt_tx_pending, 1);
+			/* counter_u64_add(ktls_cnt_tx_pending, 1); */
 			return;
 		}
 
@@ -2988,7 +2989,7 @@ ktls_enqueue(struct mbuf *m, struct socket *so, int page_count)
 	mtx_leave(&wq->mtx);
 	if (!running)
 		wakeup(wq);
-	counter_u64_add(ktls_cnt_tx_queued, queued);
+	/* counter_u64_add(ktls_cnt_tx_queued, queued); */
 }
 
 /*
@@ -3072,7 +3073,7 @@ ktls_encrypt(struct ktls_wq *wq, struct mbuf *top)
 
 		error = ktls_encrypt_record(wq, m, tls, &state);
 		if (error) {
-			counter_u64_add(ktls_offload_failed_crypto, 1);
+			/* counter_u64_add(ktls_offload_failed_crypto, 1); */
 			break;
 		}
 
@@ -3133,7 +3134,7 @@ ktls_encrypt_cb(struct ktls_ocf_encrypt_state *state, int error)
 	ktls_free(tls);
 
 	if (error != 0)
-		counter_u64_add(ktls_offload_failed_crypto, 1);
+		/* counter_u64_add(ktls_offload_failed_crypto, 1); */
 
 	CURVNET_SET(so->so_vnet);
 	npages = m->m_epg_nrdy;
@@ -3192,7 +3193,7 @@ ktls_encrypt_async(struct ktls_wq *wq, struct mbuf *top)
 
 		error = ktls_encrypt_record(wq, m, tls, state);
 		if (error) {
-			counter_u64_add(ktls_offload_failed_crypto, 1);
+			/* counter_u64_add(ktls_offload_failed_crypto, 1); */
 			free(state, M_KTLS);
 			CURVNET_SET(so->so_vnet);
 			sorele(so);
@@ -3374,14 +3375,14 @@ ktls_disable_ifnet_help(void *context)
 	else
 		err = ENXIO;
 	if (err == 0) {
-		counter_u64_add(ktls_ifnet_disable_ok, 1);
+		/* counter_u64_add(ktls_ifnet_disable_ok, 1); */
 		/* ktls_set_tx_mode() drops inp wlock, so recheck flags */
 		if ((inp->inp_flags & INP_DROPPED) == 0 &&
 		    (tp = intotcpcb(inp)) != NULL &&
 		    tp->t_fb->tfb_hwtls_change != NULL)
 			(*tp->t_fb->tfb_hwtls_change)(tp, 0);
 	} else {
-		counter_u64_add(ktls_ifnet_disable_fail, 1);
+		/* counter_u64_add(ktls_ifnet_disable_fail, 1); */
 	}
 
 out:
