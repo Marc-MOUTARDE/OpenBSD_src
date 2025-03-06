@@ -941,7 +941,7 @@ file crypto/cryptosoft.c		ipsec | crypto
 file crypto/xform.c			ipsec | crypto
 file crypto/xform_ipcomp.c		ipsec | crypto
 file crypto/arc4.c
-# file crypto/ktls_ocf.c          ktls
+file crypto/ktls_ocf.c			ktls
 file crypto/michael.c			wlan
 file crypto/cmac.c			wlan
 file crypto/hmac.c			wlan | (softraid & crypto)

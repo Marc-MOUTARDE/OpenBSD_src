@@ -73,7 +73,8 @@
 /* Encryption algorithm block sizes */
 #define DES3_BLOCK_LEN		8
 #define BLOWFISH_BLOCK_LEN	8
-#define CAST128_BLOCK_LEN	8
+#define CAST128_BLOCK_LEN       8
+#define AES_BLOCK_LEN           16
 #define RIJNDAEL128_BLOCK_LEN	16
 #define CHACHA20_BLOCK_LEN	64
 #define EALG_MAX_BLOCK_LEN	64 /* Keep this updated */

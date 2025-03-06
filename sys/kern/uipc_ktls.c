@@ -25,8 +25,6 @@
  * SUCH DAMAGE.
  */
 
-#include "amd64/include/param.h"
-#include "sys/rwlock.h"
 #include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -51,6 +49,7 @@
 #if defined(__aarch64__) || defined(__amd64__) || defined(__i386__)
 #include <machine/pcb.h>
 #endif
+#include <machine/param.h>
 #include <machine/vmparam.h>
 #include <net/if.h>
 #include <net/if_var.h>
