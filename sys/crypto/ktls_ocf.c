@@ -37,9 +37,9 @@
 #include <sys/mutex.h>
 #include <sys/sysctl.h>
 #include <sys/uio.h>
-#include <vm/vm.h>
-#include <vm/pmap.h>
-#include <vm/vm_param.h>
+#include <uvm/uvm.h>
+#include <uvm/uvm_pmap.h>
+#include <uvm/uvm_param.h>
 #include <netinet/in.h>
 #include <crypto/cryptodev.h>
 #include <crypto/ktls.h>
