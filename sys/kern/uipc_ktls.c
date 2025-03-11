@@ -100,7 +100,6 @@ struct ktls_domain_info {
 struct ktls_domain_info ktls_domains[MAXMEMDOM];
 static struct ktls_wq *ktls_wq;
 static struct proc *ktls_proc;
-static uma_zone_t ktls_buffer_zone;
 static uint16_t ktls_cpuid_lookup[MAXCPUS];
 static int ktls_init_state;
 static struct mutex ktls_init_lock;
@@ -446,9 +445,15 @@ ktls_buffer_import(void *arg, void **store, int count, int domain, int flags)
 
 	req = VM_ALLOC_WIRED | VM_ALLOC_NODUMP | malloc2vm_flags(flags);
 	for (i = 0; i < count; i++) {
-		m = vm_page_alloc_noobj_contig_domain(domain, req,
-		    atop(ktls_maxlen), 0, ~0ul, PAGE_SIZE, 0,
-		    VM_MEMATTR_DEFAULT);
+		m = uvm_pagealloc_noobj_contig_domain(
+			domain, // domain
+			req, // req
+			atop(ktls_maxlen), // npages
+			0, // low
+			~0ul, // high
+			PAGE_SIZE, // align
+			0, // boundary
+			VM_MEMATTR_DEFAULT); // memattr
 		if (m == NULL)
 			break;
 		store[i] = (void *)PHYS_TO_DMAP(VM_PAGE_TO_PHYS(m));
@@ -475,7 +480,8 @@ static void
 ktls_free_mext_contig(struct mbuf *m)
 {
 	KASSERT(m);
-	uma_zfree(ktls_buffer_zone, (void *)PHYS_TO_DMAP(m->m_epg_pa[0]));
+	free((void *)PHYS_TO_DMAP(m->m_epg_pa[0]), M_KTLS,
+	     roundup(ktls_maxlen, PAGE_SIZE));
 }
 
 static int
@@ -487,20 +493,6 @@ ktls_init(void)
 
 	ktls_wq = malloc(sizeof(*ktls_wq) * ncpus, M_KTLS,
 	    M_WAITOK | M_ZERO);
-
-	if (ktls_sw_buffer_cache) {
-		ktls_buffer_zone = uma_zcache_create(
-						     "ktls_buffers", // name
-						     roundup(ktls_maxlen, PAGE_SIZE), // size
-						     NULL, // ctor
-						     NULL, // dtor
-						     NULL, // zinit
-						     NULL, // zfini
-						     ktls_buffer_import, // zimport
-						     ktls_buffer_release, // zrelease
-						     NULL, // args
-						     UMA_ZONE_FIRSTTOUCH | UMA_ZONE_NOTRIM); // flags
-	}
 
 	/*
 	 * Initialize the workqueues to run the TLS work.  We create a
@@ -2781,8 +2773,6 @@ ktls_buffer_alloc(struct ktls_wq *wq, struct mbuf *m)
 
 	if (m->m_epg_npgs <= 2)
 		return (NULL);
-	if (ktls_buffer_zone == NULL)
-		return (NULL);
 	if ((u_int)(ticks - wq->lastallocfail) < hz) {
 		/*
 		 * Rate-limit allocation attempts after a failure.
@@ -2792,7 +2782,7 @@ ktls_buffer_alloc(struct ktls_wq *wq, struct mbuf *m)
 		 */
 		return (NULL);
 	}
-	buf = uma_zalloc(ktls_buffer_zone, M_NOWAIT | M_NORECLAIM);
+	buf = malloc(roundup(ktls_maxlen, PAGE_SIZE), M_KTLS, M_NOWAIT);
 	if (buf == NULL) {
 		domain = PCPU_GET(domain);
 		wq->lastallocfail = ticks;
@@ -2854,7 +2844,7 @@ ktls_encrypt_record(struct ktls_wq *wq, struct mbuf *m,
 			state->dst_iov[i].iov_len = len;
 		}
 	}
-	KASSERT(i + 1 <= nitems(state->dst_iov), ("dst_iov is too small"));
+	KASSERTMSG(i + 1 <= nitems(state->dst_iov), ("dst_iov is too small"));
 	state->dst_iov[i].iov_base = m->m_epg_trail;
 	state->dst_iov[i].iov_len = m->m_epg_trllen;
 
@@ -2863,12 +2853,12 @@ ktls_encrypt_record(struct ktls_wq *wq, struct mbuf *m,
 	if (__predict_false(error != 0)) {
 		/* Free the anonymous pages. */
 		if (state->cbuf != NULL)
-			uma_zfree(ktls_buffer_zone, state->cbuf);
+			free(state->cbuf, M_KTLS, roundup(ktls_maxlen, PAGE_SIZE));
 		else {
 			for (i = 0; i < m->m_epg_npgs; i++) {
 				pg = PHYS_TO_VM_PAGE(state->parray[i]);
-				(void)vm_page_unwire_noq(pg);
-				vm_page_free(pg);
+				(void)uvm_pageunwire(pg);
+				uvm_pagefree(pg);
 			}
 		}
 	}
