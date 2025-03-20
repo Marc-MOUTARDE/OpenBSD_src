@@ -71,7 +71,7 @@ struct tls_aead_data {
 	uint8_t	type;
 	uint8_t tls_vmajor;
 	uint8_t tls_vminor;
-	uint16_t tls_length;	
+	uint16_t tls_length;
 } __packed;
 
 /*

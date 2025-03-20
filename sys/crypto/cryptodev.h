@@ -105,7 +105,23 @@
 #define CRYPTO_CHACHA20_POLY1305	21
 #define CRYPTO_CHACHA20_POLY1305_MAC	22
 #define CRYPTO_ESN		23 /* Support for Extended Sequence Numbers */
-#define CRYPTO_ALGORITHM_MAX	23 /* Keep updated */
+#define CRYPTO_AES_ICM 24
+#define CRYPTO_ALGORITHM_MAX 24    /* Keep updated */
+
+/* Hash sizes */
+#define SHA1_HASH_LEN 20
+#define SHA2_256_HASH_LEN 32
+#define SHA2_384_HASH_LEN 48
+#define AES_GMAC_HASH_LEN 16
+#define POLY1305_HASH_LEN 16
+
+/* IV length */
+#define CHACHA20_POLY1305_IV_LEN 12
+#define AES_GCM_IV_LEN 12
+
+/* KTLS cryptographic mode */
+#define CRYPTO_FLAG_HARDWARE 0x01000000
+#define CRYPTO_FLAG_SOFTWARE 0x02000000
 
 /* Algorithm flags */
 #define	CRYPTO_ALG_FLAG_SUPPORTED	0x01 /* Algorithm is supported */

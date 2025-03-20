@@ -174,6 +174,116 @@ __swap64md(__uint64_t x)
 #define __htolem32(_x, _v)	(*(__uint32_t *)(_x) = __htole32(_v))
 #define __htolem64(_x, _v)	(*(__uint64_t *)(_x) = __htole64(_v))
 #endif
+
+/*
+ * Encode/Decode UUID into octet-stream.
+ *   http://www.opengroup.org/dce/info/draft-leach-uuids-guids-01.txt
+ *
+ * 0                   1                   2                   3
+ *   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |                          time_low                             |
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |       time_mid                |         time_hi_and_version   |
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |clk_seq_hi_res |  clk_seq_low  |         node (0-1)            |
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |                         node (2-5)                            |
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ */
+
+/* Alignment-agnostic encode/decode bytestream to/from little/big endian. */
+
+static __inline __uint16_t
+be16dec(const void *pp)
+{
+	__uint8_t const *p = (__uint8_t const *)pp;
+
+	return ((p[0] << 8) | p[1]);
+}
+
+static __inline __uint32_t
+be32dec(const void *pp)
+{
+	__uint8_t const *p = (__uint8_t const *)pp;
+
+	return (((unsigned)p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]);
+}
+
+static __inline __uint64_t
+be64dec(const void *pp)
+{
+	__uint8_t const *p = (__uint8_t const *)pp;
+
+	return (((__uint64_t)be32dec(p) << 32) | be32dec(p + 4));
+}
+
+static __inline __uint16_t
+le16dec(const void *pp)
+{
+	__uint8_t const *p = (__uint8_t const *)pp;
+
+	return ((p[1] << 8) | p[0]);
+}
+
+static __inline __uint32_t
+le32dec(const void *pp)
+{
+	__uint8_t const *p = (__uint8_t const *)pp;
+
+	return (((unsigned)p[3] << 24) | (p[2] << 16) | (p[1] << 8) | p[0]);
+}
+
+static __inline void
+be16enc(void *pp, __uint16_t u)
+{
+	__uint8_t *p = (__uint8_t *)pp;
+
+	p[0] = (u >> 8) & 0xff;
+	p[1] = u & 0xff;
+}
+
+static __inline void
+be32enc(void *pp, __uint32_t u)
+{
+	__uint8_t *p = (__uint8_t *)pp;
+
+	p[0] = (u >> 24) & 0xff;
+	p[1] = (u >> 16) & 0xff;
+	p[2] = (u >> 8) & 0xff;
+	p[3] = u & 0xff;
+}
+
+static __inline void
+be64enc(void *pp, __uint64_t u)
+{
+
+	__uint8_t *p = (__uint8_t *)pp;
+
+	be32enc(p, (__uint32_t)(u >> 32));
+	be32enc(p + 4, (__uint32_t)(u & 0xffffffffU));
+}
+
+static __inline void
+le16enc(void *pp, __uint16_t u)
+{
+	__uint8_t *p = (__uint8_t *)pp;
+
+	p[0] = u & 0xff;
+	p[1] = (u >> 8) & 0xff;
+}
+
+static __inline void
+le32enc(void *pp, __uint32_t u)
+{
+	__uint8_t *p = (__uint8_t *)pp;
+
+	p[0] = u & 0xff;
+	p[1] = (u >> 8) & 0xff;
+	p[2] = (u >> 16) & 0xff;
+	p[3] = (u >> 24) & 0xff;
+}
+
 #endif /* _KERNEL */
 
 #endif /* _SYS__ENDIAN_H_ */
