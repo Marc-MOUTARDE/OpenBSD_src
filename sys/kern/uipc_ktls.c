@@ -25,7 +25,6 @@
  * SUCH DAMAGE.
  */
 
-#include "sys/rwlock.h"
 #include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -38,6 +37,7 @@
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/protosw.h>
+#include <sys/queue.h>
 #include <sys/refcnt.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -119,6 +119,12 @@ static int ktls_bind_threads = 1;
 #else
 static int ktls_bind_threads = 0;
 #endif
+
+// TODO put this somewhere else
+#define __containerof(x, s, m) ({ \
+	const volatile __typeof((s*)0->m) *__x = (x); \
+	(s*)((const volatile char *)__x - __builtin_offsetof(s, m)); \
+})
 
 #if 0
 SX_SYSINIT(ktls_init_lock, &ktls_init_lock, "ktls init");
@@ -431,37 +437,9 @@ ktls_get_cpu(struct socket *so)
 	return (cpuid);
 }
 
-static int
-ktls_buffer_import(void *arg, struct vm_page **store, int count, int domain, int flags)
-{
-	struct vm_page *m;
-	struct uvm_object uobj;
-	int i, req;
+uuu
 
-	memset(&uobj, 0, sizeof(uobj));
-	KASSERTMSG((ktls_maxlen & PAGE_MASK) == 0,
-	    "%s: ktls max length %d is not page size-aligned",
-	    __func__, ktls_maxlen);
-
-	for (i = 0; i < count; i++) {
-		m = uvm_pagealloc_noobj_contig_domain(
-			domain, // domain
-			req, // req
-			atop(ktls_maxlen), // npages
-			0, // low
-			~0ul, // high
-			PAGE_SIZE, // align
-			0, // boundary
-			VM_MEMATTR_DEFAULT); // memattr
-		if (m == NULL)
-			break;
-		uvm_pagewire(m);
-		store[i] = m;
-	}
-	return (i);
-}
-
-static void
+STATICuuuuuuu: void
 ktls_buffer_release(void *arg __unused, struct vm_page **store, int count)
 {
 	struct vm_page *m;
@@ -781,9 +759,9 @@ ktls_create_session(struct socket *so, struct tls_enable *en,
 		tls->params.tls_tlen += sizeof(uint8_t);
 
 	KASSERTMSG(tls->params.tls_hlen <= MBUF_PEXT_HDR_LEN,
-	    ("TLS header length too long: %d", tls->params.tls_hlen));
+	    "TLS header length too long: %d", tls->params.tls_hlen);
 	KASSERTMSG(tls->params.tls_tlen <= MBUF_PEXT_TRAIL_LEN,
-	    ("TLS trailer length too long: %d", tls->params.tls_tlen));
+	    "TLS trailer length too long: %d", tls->params.tls_tlen);
 
 	if (en->auth_key_len != 0) {
 		tls->params.auth_key_len = en->auth_key_len;
@@ -1201,18 +1179,18 @@ sb_mark_notready(struct sockbuf *sb)
 	for (; m != NULL; m = m->m_next) {
 		KASSERTMSG(m->m_nextpkt == NULL, ("%s: m_nextpkt != NULL",
 		    __func__));
-		KASSERT((m->m_flags & M_NOTAVAIL) == 0, ("%s: mbuf not avail",
-		    __func__));
-		KASSERT(sb->sb_acc >= m->m_len, ("%s: sb_acc < m->m_len",
-		    __func__));
+		KASSERTMSG((m->m_flags & M_NOTAVAIL) == 0, "%s: mbuf not avail",
+		    __func__);
+		KASSERTMSG(sb->sb_acc >= m->m_len, "%s: sb_acc < m->m_len",
+		    __func__);
 		m->m_flags |= M_NOTREADY;
 		sb->sb_acc -= m->m_len;
 		sb->sb_tlscc += m->m_len;
 		sb->sb_mtlstail = m;
 	}
-	KASSERT(sb->sb_acc == 0 && sb->sb_tlscc == sb->sb_ccc,
-	    ("%s: acc %u tlscc %u ccc %u", __func__, sb->sb_acc, sb->sb_tlscc,
-	    sb->sb_ccc));
+	KASSERTMSG(sb->sb_acc == 0 && sb->sb_tlscc == sb->sb_ccc,
+	    "%s: acc %u tlscc %u ccc %u", __func__, sb->sb_acc, sb->sb_tlscc,
+	    sb->sb_ccc);
 }
 
 /*
@@ -1233,8 +1211,8 @@ ktls_pending_rx_info(struct sockbuf *sb, uint64_t *seqnop, size_t *residp)
 	size_t resid;
 	u_int offset, record_len;
 
-	SOCKBUF_LOCK_ASSERT(sb);
-	MPASS(sb->sb_flags & SB_TLS_RX);
+	KASSERTMSG(mtx_owned(&sb->sb_mtx), "Mutex should be locked");
+	KASSERTMSG(sb->sb_flags & SB_TLS_RX, "Assertion failed at %s:%d", __FILE__, __LINE__);
 	seqno = sb->sb_tls_seqno;
 	resid = sb->sb_tlscc;
 	m = sb->sb_mtls;
@@ -1439,10 +1417,12 @@ ktls_enable_tx(struct socket *so, struct tls_enable *en)
 	so->so_snd.sb_tls_info = tls;
 	if (tls->mode != TCP_TLS_MODE_SW) {
 		tp = intotcpcb(inp);
-		MPASS(tp->t_nic_ktls_xmit == 0);
+		KASSERTMSG(tp->t_nic_ktls_xmit == 0, "Assertion failed at %s:%d", __FILE__, __LINE__);
 		tp->t_nic_ktls_xmit = 1;
+		/*
 		if (tp->t_fb->tfb_hwtls_change != NULL)
 			(*tp->t_fb->tfb_hwtls_change)(tp, 1);
+		*/
 	}
 	SOCK_SENDBUF_UNLOCK(so);
 	rw_exit_write(&inp->inp_socket->so_lock);
@@ -1505,7 +1485,7 @@ ktls_get_rx_sequence(struct inpcb *inp, uint32_t *tcpseq, uint64_t *tlsseq)
 	}
 
 	tp = intotcpcb(inp);
-	MPASS(tp != NULL);
+	KASSERTMSG(tp != NULL, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	mtx_enter(&so->so_rcv.sb_mtx);
 	*tcpseq = tp->rcv_nxt - so->so_rcv.sb_tlscc;
@@ -1631,10 +1611,12 @@ ktls_set_tx_mode(struct socket *so, int mode)
 	SOCKBUF_LOCK(&so->so_snd);
 	so->so_snd.sb_tls_info = tls_new;
 	if (tls_new->mode != TCP_TLS_MODE_SW) {
-		MPASS(tp->t_nic_ktls_xmit == 0);
+		KASSERTMSG(tp->t_nic_ktls_xmit == 0, "Assertion failed at %s:%d", __FILE__, __LINE__);
 		tp->t_nic_ktls_xmit = 1;
+		/*
 		if (tp->t_fb->tfb_hwtls_change != NULL)
 			(*tp->t_fb->tfb_hwtls_change)(tp, 1);
+		*/
 	}
 	SOCKBUF_UNLOCK(&so->so_snd);
 	SOCK_IO_SEND_UNLOCK(so);
@@ -1673,7 +1655,7 @@ ktls_reset_receive_tag(void *context)
 	struct socket *so;
 	int error;
 
-	MPASS(pending == 1);
+	/* KASSERTMSG(pending == 1, "Assertion failed at %s:%d", __FILE__, __LINE__); */
 
 	tls = context;
 	so = tls->so;
@@ -1731,15 +1713,15 @@ ktls_reset_receive_tag(void *context)
 	}
 
 out:
-	mtx_pool_lock(mtxpool_sleep, tls);
+	/* mtx_pool_lock(mtxpool_sleep, tls); */
 	tls->reset_pending = false;
-	mtx_pool_unlock(mtxpool_sleep, tls);
+	/* mtx_pool_unlock(mtxpool_sleep, tls); */
 
 	if (ifp != NULL)
 		if_rele(ifp);
-	CURVNET_SET(so->so_vnet);
+	// CURVNET_SET(so->so_vnet);
 	sorele(so);
-	CURVNET_RESTORE();
+	// CURVNET_RESTORE();
 	ktls_free(tls);
 }
 
@@ -1761,7 +1743,7 @@ ktls_reset_send_tag(void *context, int pending)
 	struct tcpcb *tp;
 	int error;
 
-	MPASS(pending == 1);
+	KASSERTMSG(pending == 1, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	tls = context;
 	inp = tls->inp;
@@ -1788,9 +1770,9 @@ ktls_reset_send_tag(void *context, int pending)
 	if (error == 0) {
 		rw_enter_write(&inp->inp_socket->so_lock);
 		tls->snd_tag = new;
-		mtx_pool_lock(mtxpool_sleep, tls);
+		/* mtx_pool_lock(mtxpool_sleep, tls); */
 		tls->reset_pending = false;
-		mtx_pool_unlock(mtxpool_sleep, tls);
+		/* mtx_pool_unlock(mtxpool_sleep, tls); */
 		rw_exit_write(&inp->inp_socket->so_lock);
 
 		/* counter_u64_add(ktls_ifnet_reset, 1); */
@@ -1804,9 +1786,9 @@ ktls_reset_send_tag(void *context, int pending)
 		rw_enter_write(&inp->inp_socket->so_lock);
 		if (!(inp->inp_flags & INP_DROPPED)) {
 			tp = intotcpcb(inp);
-			CURVNET_SET(inp->inp_vnet);
+			// CURVNET_SET(inp->inp_vnet);
 			tp = tcp_drop(tp, ECONNABORTED);
-			CURVNET_RESTORE();
+			// CURVNET_RESTORE();
 			if (tp != NULL) {
 				/* counter_u64_add(ktls_ifnet_reset_dropped, 1); */
 				rw_exit_write(&inp->inp_socket->so_lock);
@@ -1832,9 +1814,10 @@ ktls_input_ifp_mismatch(struct sockbuf *sb, struct ifnet *ifp)
 	struct ktls_session *tls;
 	struct socket *so;
 
-	SOCKBUF_LOCK_ASSERT(sb);
-	KASSERT(sb->sb_flags & SB_TLS_RX, ("%s: sockbuf %p isn't TLS RX",
-	    __func__, sb));
+	KASSERTMSG(mtx_owned(&sb->sb_mtx), "Mutex should be locked");
+	KASSERTMSG(mtx_owned(&sb->sb_mtx), "Should be locked");
+	KASSERTMSG(sb->sb_flags & SB_TLS_RX, "%s: sockbuf %p isn't TLS RX",
+	    __func__, sb);
 	so = __containerof(sb, struct socket, so_rcv);
 
 	tls = sb->sb_tls_info;
@@ -1846,7 +1829,7 @@ ktls_input_ifp_mismatch(struct sockbuf *sb, struct ifnet *ifp)
 	 * See if we should schedule a task to update the receive tag for
 	 * this session.
 	 */
-	mtx_pool_lock(mtxpool_sleep, tls);
+	/* mtx_pool_lock(mtxpool_sleep, tls); */
 	if (!tls->reset_pending) {
 		(void) ktls_hold(tls);
 		soref(so);
@@ -1854,7 +1837,7 @@ ktls_input_ifp_mismatch(struct sockbuf *sb, struct ifnet *ifp)
 		tls->reset_pending = true;
 		taskqueue_enqueue(taskqueue_thread, &tls->reset_tag_task);
 	}
-	mtx_pool_unlock(mtxpool_sleep, tls);
+	/* mtx_pool_unlock(mtxpool_sleep, tls); */
 }
 
 int
@@ -1864,19 +1847,19 @@ ktls_output_eagain(struct inpcb *inp, struct ktls_session *tls)
 	if (inp == NULL)
 		return (ENOBUFS);
 
-	INP_LOCK_ASSERT(inp);
+	rw_assert_anylock(&inp->inp_socket->so_lock);
 
 	/*
 	 * See if we should schedule a task to update the send tag for
 	 * this session.
 	 */
-	mtx_pool_lock(mtxpool_sleep, tls);
+	/* mtx_pool_lock(mtxpool_sleep, tls); */
 	if (!tls->reset_pending) {
 		(void) ktls_hold(tls);
 		tls->reset_pending = true;
 		taskqueue_enqueue(taskqueue_thread, &tls->reset_tag_task);
 	}
-	mtx_pool_unlock(mtxpool_sleep, tls);
+	/* mtx_pool_unlock(mtxpool_sleep, tls); */
 	return (ENOBUFS);
 }
 
@@ -1893,7 +1876,7 @@ ktls_modify_txrtlmt(struct ktls_session *tls, uint64_t max_pacing_rate)
 	/* Can't get to the inp, but it should be locked. */
 	/* INP_LOCK_ASSERT(inp); */
 
-	MPASS(tls->mode == TCP_TLS_MODE_IFNET);
+	KASSERTMSG(tls->mode == TCP_TLS_MODE_IFNET, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	if (tls->snd_tag == NULL) {
 		/*
@@ -1907,8 +1890,8 @@ ktls_modify_txrtlmt(struct ktls_session *tls, uint64_t max_pacing_rate)
 
 	mst = tls->snd_tag;
 
-	MPASS(mst != NULL);
-	MPASS(mst->sw->type == IF_SND_TAG_TYPE_TLS_RATE_LIMIT);
+	KASSERTMSG(mst != NULL, "Assertion failed at %s:%d", __FILE__, __LINE__);
+	KASSERTMSG(mst->sw->type == IF_SND_TAG_TYPE_TLS_RATE_LIMIT, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	return (mst->sw->snd_tag_modify(mst, &params));
 }
@@ -1927,7 +1910,7 @@ ktls_destroy(struct ktls_session *tls)
 	struct tcpcb *tp;
 	bool wlocked;
 
-	MPASS(tls->refcount == 0);
+	KASSERTMSG(tls->refcount == 0, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	inp = tls->inp;
 	if (tls->tx) {
@@ -2011,7 +1994,7 @@ ktls_destroy(struct ktls_session *tls)
 		if (tls->tx) {
 			INP_WLOCK_ASSERT(inp);
 			tp = intotcpcb(inp);
-			MPASS(tp->t_nic_ktls_xmit == 1);
+			KASSERTMSG(tp->t_nic_ktls_xmit == 1, "Assertion failed at %s:%d", __FILE__, __LINE__);
 			tp->t_nic_ktls_xmit = 0;
 		}
 		break;
@@ -2218,9 +2201,9 @@ ktls_check_rx(struct sockbuf *sb)
 	struct socket *so;
 	bool running;
 
-	SOCKBUF_LOCK_ASSERT(sb);
-	KASSERT(sb->sb_flags & SB_TLS_RX, ("%s: sockbuf %p isn't TLS RX",
-	    __func__, sb));
+	KASSERTMSG(mtx_owned(&sb->sb_mtx), "Mutex should be locked");
+	KASSERTMSG(sb->sb_flags & SB_TLS_RX, "%s: sockbuf %p isn't TLS RX",
+	    __func__, sb);
 	so = __containerof(sb, struct socket, so_rcv);
 
 	if (sb->sb_flags & SB_TLS_RX_RUNNING)
@@ -2261,8 +2244,8 @@ ktls_detach_record(struct sockbuf *sb, int len)
 	struct mbuf *m, *n, *top;
 	int remain;
 
-	SOCKBUF_LOCK_ASSERT(sb);
-	MPASS(len <= sb->sb_tlscc);
+	KASSERTMSG(mtx_owned(&sb->sb_mtx), "Mutex should be locked");
+	KASSERTMSG(len <= sb->sb_tlscc, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	/*
 	 * If TLS chain is the exact size of the record,
@@ -2343,7 +2326,7 @@ ktls_detach_record(struct sockbuf *sb, int len)
 	m->m_next = NULL;
 
 out:
-	MPASS(m_length(top, NULL) == len);
+	KASSERTMSG(m_length(top, NULL) == len, "Assertion failed at %s:%d", __FILE__, __LINE__);
 	for (m = top; m != NULL; m = m->m_next)
 		sbfree_ktls_rx(sb, m);
 	sb->sb_tlsdcc = len;
@@ -2427,7 +2410,7 @@ ktls_mbuf_crypto_state(struct mbuf *mb, int offset, int len)
 			break;
 		offset -= mb->m_len;
 	}
-	MPASS(mb != NULL || offset == 0);
+	KASSERTMSG(mb != NULL || offset == 0, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	if ((m_flags_ored ^ m_flags_anded) & M_DECRYPTED)
 		return (KTLS_MBUF_CRYPTO_ST_MIXED);
@@ -2463,7 +2446,7 @@ ktls_resync_ifnet(struct socket *so, uint32_t tls_len, uint64_t tls_rcd_num)
 	}
 
 	tp = intotcpcb(inp);
-	MPASS(tp != NULL);
+	KASSERTMSG(tp != NULL, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	/* Get the TCP sequence number of the next valid TLS header. */
 	mtx_enter(&so->so_rcv.sb_mtx);
@@ -2475,7 +2458,7 @@ ktls_resync_ifnet(struct socket *so, uint32_t tls_len, uint64_t tls_rcd_num)
 
 	rw_exit_read(&inp->inp_socket->so_lock);
 
-	MPASS(mst->sw->type == IF_SND_TAG_TYPE_TLS_RX);
+	KASSERTMSG(mst->sw->type == IF_SND_TAG_TYPE_TLS_RX, "Assertion failed at %s:%d", __FILE__, __LINE__);
 	return (mst->sw->snd_tag_modify(mst, &params));
 }
 
@@ -2490,9 +2473,9 @@ ktls_drop(struct socket *so, int error)
 	rw_enter_write(&inp->inp_socket->so_lock);
 	if (!(inp->inp_flags & INP_DROPPED)) {
 		tp = intotcpcb(inp);
-		CURVNET_SET(inp->inp_vnet);
+		// CURVNET_SET(inp->inp_vnet);
 		tp = tcp_drop(tp, error);
-		CURVNET_RESTORE();
+		// CURVNET_RESTORE();
 		if (tp != NULL)
 			rw_exit_write(&inp->inp_socket->so_lock);
 	} else {
@@ -2526,7 +2509,7 @@ ktls_decrypt(struct socket *so)
 	    ("%s: socket %p not running", __func__, so));
 
 	tls = sb->sb_tls_info;
-	MPASS(tls != NULL);
+	KASSERTMSG(tls != NULL, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	tls13 = (tls->params.tls_vminor == TLS_MINOR_VER_THREE);
 	if (tls13)
@@ -2576,7 +2559,7 @@ ktls_decrypt(struct socket *so)
 		data = ktls_detach_record(sb, tls_len);
 		if (data == NULL)
 			continue;
-		MPASS(sb->sb_tlsdcc == tls_len);
+		KASSERTMSG(sb->sb_tlsdcc == tls_len, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 		seqno = sb->sb_tls_seqno;
 		sb->sb_tls_seqno++;
@@ -2646,10 +2629,10 @@ ktls_decrypt(struct socket *so)
 
 			if (error != EMSGSIZE)
 				error = EBADMSG;
-			CURVNET_SET(so->so_vnet);
+			// CURVNET_SET(so->so_vnet);
 			so->so_error = error;
 			sorwakeup_locked(so);
-			CURVNET_RESTORE();
+			// CURVNET_RESTORE();
 
 			m_freem(data);
 
@@ -2670,7 +2653,7 @@ ktls_decrypt(struct socket *so)
 		mtx_enter(&sb->sb_mtx);
 		if (sb->sb_tlsdcc == 0) {
 			/* sbcut/drop/flush discarded these mbufs. */
-			MPASS(sb->sb_tlscc == 0);
+			KASSERTMSG(sb->sb_tlscc == 0, "Assertion failed at %s:%d", __FILE__, __LINE__);
 			m_freem(data);
 			m_freem(control);
 			break;
@@ -2742,9 +2725,9 @@ ktls_decrypt(struct socket *so)
 deref:
 	// SOCKBUF_UNLOCK_ASSERT(sb);
 
-	CURVNET_SET(so->so_vnet);
+	// CURVNET_SET(so->so_vnet);
 	sorele(so);
-	CURVNET_RESTORE();
+	// CURVNET_RESTORE();
 }
 
 void
@@ -2810,10 +2793,10 @@ ktls_encrypt_record(struct ktls_wq *wq, struct mbuf *m,
 	int error, i, len, off;
 
 	KASSERTMSG((m->m_flags & (M_EXTPG | M_NOTREADY)) == (M_EXTPG | M_NOTREADY),
-	    ("%p not unready & nomap mbuf\n", m));
+	    "%p not unready & nomap mbuf\n", m);
 	KASSERTMSG(ptoa(m->m_epg_npgs) <= ktls_maxlen,
-	    ("page count %d larger than maximum frame length %d", m->m_epg_npgs,
-	    ktls_maxlen));
+	    "page count %d larger than maximum frame length %d", m->m_epg_npgs,
+	    ktls_maxlen);
 
 	/* Anonymous mbufs are encrypted in place. */
 	if ((m->m_epg_flags & EPG_FLAG_ANON) != 0)
@@ -2889,12 +2872,12 @@ ktls_enqueue(struct mbuf *m, struct socket *so, int page_count)
 	int queued;
 	bool running;
 
-	KASSERT(((m->m_flags & (M_EXTPG | M_NOTREADY)) ==
+	KASSERTMSG(((m->m_flags & (M_EXTPG | M_NOTREADY)) ==
 	    (M_EXTPG | M_NOTREADY)),
-	    ("ktls_enqueue: %p not unready & nomap mbuf\n", m));
-	KASSERT(page_count != 0, ("enqueueing TLS mbuf with zero page count"));
+	    "ktls_enqueue: %p not unready & nomap mbuf\n", m);
+	KASSERTMSG(page_count != 0, ("enqueueing TLS mbuf with zero page count"));
 
-	KASSERT(m->m_epg_tls->mode == TCP_TLS_MODE_SW, ("!SW TLS mbuf"));
+	KASSERTMSG(m->m_epg_tls->mode == TCP_TLS_MODE_SW, "!SW TLS mbuf");
 
 	m->m_epg_enc_cnt = page_count;
 
@@ -2990,7 +2973,7 @@ ktls_finish_nonanon(struct mbuf *m, struct ktls_ocf_encrypt_state *state)
 {
 	int i;
 
-	MPASS((m->m_epg_flags & EPG_FLAG_ANON) == 0);
+	KASSERTMSG((m->m_epg_flags & EPG_FLAG_ANON) == 0, "Assertion failed at %s:%d", __FILE__, __LINE__);
 
 	/* Free the old pages. */
 	m->m_ext.ext_free(m);
@@ -3082,7 +3065,7 @@ ktls_encrypt(struct ktls_wq *wq, struct mbuf *top)
 		ktls_free(tls);
 	}
 
-	CURVNET_SET(so->so_vnet);
+	// CURVNET_SET(so->so_vnet);
 	if (error == 0) {
 		(void)so->so_proto->pr_ready(so, top, npages);
 	} else {
@@ -3091,7 +3074,7 @@ ktls_encrypt(struct ktls_wq *wq, struct mbuf *top)
 	}
 
 	sorele(so);
-	CURVNET_RESTORE();
+	// CURVNET_RESTORE();
 }
 
 void
@@ -3124,7 +3107,7 @@ ktls_encrypt_cb(struct ktls_ocf_encrypt_state *state, int error)
 	if (error != 0)
 		/* counter_u64_add(ktls_offload_failed_crypto, 1); */
 
-	CURVNET_SET(so->so_vnet);
+	// CURVNET_SET(so->so_vnet);
 	npages = m->m_epg_nrdy;
 
 	if (error == 0) {
@@ -3135,7 +3118,7 @@ ktls_encrypt_cb(struct ktls_ocf_encrypt_state *state, int error)
 	}
 
 	sorele(so);
-	CURVNET_RESTORE();
+	// CURVNET_RESTORE();
 }
 
 /*
@@ -3183,23 +3166,23 @@ ktls_encrypt_async(struct ktls_wq *wq, struct mbuf *top)
 		if (error) {
 			/* counter_u64_add(ktls_offload_failed_crypto, 1); */
 			free(state, M_KTLS, 0);
-			CURVNET_SET(so->so_vnet);
+			// CURVNET_SET(so->so_vnet);
 			sorele(so);
-			CURVNET_RESTORE();
+			// CURVNET_RESTORE();
 			break;
 		}
 
 		npages += mpages;
 	}
 
-	CURVNET_SET(so->so_vnet);
+	// CURVNET_SET(so->so_vnet);
 	if (error != 0) {
 		ktls_drop(so, EIO);
 		mb_free_notready(m, total_pages - npages);
 	}
 
 	sorele(so);
-	CURVNET_RESTORE();
+	// CURVNET_RESTORE();
 }
 
 static int
@@ -3353,7 +3336,7 @@ ktls_disable_ifnet_help(void *context)
 		return;
 	mtx_enter(&inp->inp_sofree_mtx);
 	so = inp->inp_socket;
-	MPASS(so != NULL);
+	KASSERTMSG(so != NULL, "Assertion failed at %s:%d", __FILE__, __LINE__);
 	if (inp->inp_flags & INP_DROPPED) {
 		goto out;
 	}
@@ -3365,18 +3348,20 @@ ktls_disable_ifnet_help(void *context)
 	if (err == 0) {
 		/* counter_u64_add(ktls_ifnet_disable_ok, 1); */
 		/* ktls_set_tx_mode() drops inp wlock, so recheck flags */
+		/*
 		if ((inp->inp_flags & INP_DROPPED) == 0 &&
 		    (tp = intotcpcb(inp)) != NULL &&
 		    tp->t_fb->tfb_hwtls_change != NULL)
 			(*tp->t_fb->tfb_hwtls_change)(tp, 0);
+		*/
 	} else {
 		/* counter_u64_add(ktls_ifnet_disable_fail, 1); */
 	}
 
 out:
-	CURVNET_SET(so->so_vnet);
+	// CURVNET_SET(so->so_vnet);
 	sorele(so);
-	CURVNET_RESTORE();
+	// CURVNET_RESTORE();
 	mtx_leave(&inp->inp_sofree_mtx);
 	ktls_free(tls);
 }

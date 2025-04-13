@@ -339,7 +339,7 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_ocf_encrypt_state *state,
 	uio->uio_td = curthread;
 	uio->uio_resid = sizeof(*ad) + tls_comp_len + os->mac_len;
 
-	crp->crp_payload_start = 0;
+        crp->crp_payload_start = 0;
 	crp->crp_payload_length = sizeof(*ad) + tls_comp_len;
 	crp->crp_digest_start = crp->crp_payload_length;
 	crp->crp_op = CRYPTO_OP_COMPUTE_DIGEST;

@@ -116,6 +116,8 @@ struct sockbuf {
 #define SB_ASYNC	0x0002		/* ASYNC I/O, need signals */
 #define SB_SPLICE	0x0004		/* buffer is splice source or drain */
 #define SB_NOINTR	0x0008		/* operations not interruptible */
+#define SB_TLS_RX       0x0010          /* using KTLS on RX */
+#define SB_TLS_RX_RUNNING 0x0020        /* KTLS RX operation running */
 
 /*
  * Kernel structure per socket.
@@ -155,7 +157,8 @@ struct socket {
 	struct	soqhead	so_q;		/* [s] queue of incoming connections */
 	struct	sigio_ref so_sigio;	/* async I/O registration */
 	TAILQ_ENTRY(socket) so_qe;	/* [s] our queue entry (q or q0) */
-	short	so_q0len;		/* [s] partials on so_q0 */
+	STAILQ_ENTRY(socket) so_ktls_rx_list; /* [k] our place on KTLS RX work queue */
+        short	so_q0len;		/* [s] partials on so_q0 */
 	short	so_qlen;		/* [s] number of connections on so_q */
 	short	so_qlimit;		/* [s] max number queued connections */
 	short	so_timeo;		/* [s] connection timeout */

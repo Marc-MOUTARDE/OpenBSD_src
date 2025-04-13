@@ -230,6 +230,7 @@ struct inpcbtable {
  * protocol at PRU_BIND, PRU_LISTEN, PRU_CONNECT, etc, or by in_pcb*().
  */
 #define INP_IPV6	0x100	/* socket, proto, domain, family is PF_INET6 */
+#define INP_DROPPED     0x04000000
 
 /*
  * Flags in inp_flags for IPV6

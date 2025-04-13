@@ -35,6 +35,7 @@
 #ifndef _SYS_MBUF_H_
 #define _SYS_MBUF_H_
 
+#include "sys/types.h"
 #include <sys/queue.h>
 
 /*
@@ -161,6 +162,29 @@ struct mbuf {
 		struct {
 			struct	pkthdr MH_pkthdr;	/* M_PKTHDR set */
 			union {
+				struct {
+					uint8_t	m_epg_npgs;
+					uint8_t	m_epg_nrdy;
+					/* TLS header and trailer lengths.
+					 * The data itself resides in m_ext. */
+					uint8_t	m_epg_hdrlen;
+					uint8_t	m_epg_trllen;
+					/* Offset into 1st page and length of
+					 * data in the last page. */
+					uint16_t m_epg_1st_off;
+					uint16_t m_epg_last_len;
+					uint8_t	m_epg_flags;
+#define	EPG_FLAG_ANON	0x1	/* Data can be encrypted in place. */
+#define	EPG_FLAG_2FREE	0x2	/* Scheduled for free. */
+					uint8_t	m_epg_record_type;
+					uint8_t	__spare[2];
+					int	m_epg_enc_cnt;
+					struct ktls_session *m_epg_tls;
+					struct socket	*m_epg_so;
+					uint64_t	m_epg_seqno;
+					STAILQ_ENTRY(mbuf) m_epg_stailq;
+
+				};
 				struct	mbuf_ext MH_ext; /* M_EXT set */
 				char	MH_databuf[MHLEN];
 			} MH_dat;
@@ -168,7 +192,7 @@ struct mbuf {
 		char	M_databuf[MLEN];		/* !M_PKTHDR, !M_EXT */
 	} M_dat;
 };
-#define	m_next		m_hdr.mh_next
+define	m_next		m_hdr.mh_next
 #define	m_len		m_hdr.mh_len
 #define	m_data		m_hdr.mh_data
 #define	m_type		m_hdr.mh_type
@@ -178,6 +202,11 @@ struct mbuf {
 #define	m_ext		M_dat.MH.MH_dat.MH_ext
 #define	m_pktdat	M_dat.MH.MH_dat.MH_databuf
 #define	m_dat		M_dat.M_databuf
+
+#define m_epg_npgs      M_dat.MH.MH_dat.m_epg_npgs
+#define m_epg_flags     M_dat.MH.MH_dat.m_epg_flags
+#define m_epg_last_len  M_dat.MH.MH_dat.m_epg_last_len
+#define m_epg_1st_off   M_dat.MH.MH_dat.m_epg_1st_off
 
 /* mbuf flags */
 #define	M_EXT		0x0001	/* has associated external storage */
@@ -197,6 +226,9 @@ struct mbuf {
 #define M_ZEROIZE	0x2000  /* Zeroize data part on free */
 #define M_COMP		0x4000  /* header was decompressed */
 #define M_LINK0		0x8000	/* link layer specific flag */
+#define M_EXTPG         0x10000 /* has array of unmapped pages and TLS */
+#define M_NOTREADY      0x20000 /* m_data not populated yet */
+#define M_DECRYPTED     0x40000
 
 #ifdef _KERNEL
 #define M_BITS \
