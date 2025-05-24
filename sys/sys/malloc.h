@@ -142,7 +142,7 @@
 #define	M_MEMDESC	105	/* memory range */
 /* 106 - free */
 #define M_KTLS 106 /* ktls (9) memory buffers */
-#define M_KTLS_OCF 107 /* ktls (9) memory, crypto section
+#define M_KTLS_OCF 107 /* ktls (9) memory, crypto section */
 #define	M_CRYPTO_DATA	108	/* crypto(9) data buffers */
 /* 109 - free */
 #define	M_CREDENTIALS	110	/* ipsec(4) related credentials */

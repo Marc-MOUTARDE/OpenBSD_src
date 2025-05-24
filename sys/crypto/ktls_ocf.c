@@ -37,6 +37,7 @@
 #include <sys/mutex.h>
 #include <sys/sysctl.h>
 #include <sys/uio.h>
+#include <lib/libkern/libkern.h>
 #include <uvm/uvm.h>
 #include <uvm/uvm_pmap.h>
 #include <uvm/uvm_param.h>
@@ -284,13 +285,13 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_ocf_encrypt_state *state,
 	uint16_t tls_comp_len;
 	uint8_t pad;
 
-	MPASS(outiovcnt + 1 <= nitems(iov));
+	KASSERTMSG(outiovcnt < nitems(iov), "Invalid assert at %s:%d", __FILE__, __LINE__);
 
 	os = tls->ocf_session;
 	hdr = (const struct tls_record_layer *)m->m_epg_hdr;
 	crp = &state->crp;
 	uio = &state->uio;
-	MPASS(tls->sync_dispatch);
+	KASSERT(tls->sync_dispatch);
 
 #ifdef INVARIANTS
 	if (os->implicit_iv) {
@@ -366,8 +367,8 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_ocf_encrypt_state *state,
 	/* Finally, encrypt the record. */
 	crp->crp_payload_start = m->m_epg_hdrlen;
 	crp->crp_payload_length = tls_comp_len + m->m_epg_trllen;
-	KASSERT(crp->crp_payload_length % AES_BLOCK_LEN == 0,
-	    ("invalid encryption size"));
+	KASSERTMSG(crp->crp_payload_length % AES_BLOCK_LEN == 0,
+	    "invalid encryption size");
 	crypto_use_single_mbuf(crp, m);
 	crp->crp_op = CRYPTO_OP_ENCRYPT;
 	crp->crp_flags = CRYPTO_F_CBIMM | CRYPTO_F_IV_SEPARATE;
@@ -400,7 +401,7 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_ocf_encrypt_state *state,
 
 	if (os->implicit_iv) {
 		KASSERTMSG(os->mac_len + pad + 1 >= AES_BLOCK_LEN,
-		    ("trailer too short to read IV"));
+		    "trailer too short to read IV");
 		memcpy(os->iv, m->m_epg_trail + m->m_epg_trllen - AES_BLOCK_LEN,
 		    AES_BLOCK_LEN);
 #ifdef INVARIANTS
@@ -731,8 +732,8 @@ ktls_ocf_tls12_aead_recrypt(struct ktls_session *tls,
 	if (tls_len < sizeof(uint64_t) + AES_GMAC_HASH_LEN)
 		return (EMSGSIZE);
 
-	KASSERT(tls->params.cipher_algorithm == CRYPTO_AES_GCM_16,
-	    ("%s: only AES-GCM is supported", __func__));
+	KASSERTMSG(tls->params.cipher_algorithm == CRYPTO_AES_GCM_16,
+	    "%s: only AES-GCM is supported", __func__);
 
 	/* Setup the IV. */
 	memcpy(crp.crp_iv, tls->params.iv, TLS_AEAD_GCM_LEN);
@@ -918,8 +919,8 @@ ktls_ocf_tls13_aead_recrypt(struct ktls_session *tls,
 	if (tls_len < AES_GMAC_HASH_LEN + 1)
 		return (EMSGSIZE);
 
-	KASSERT(tls->params.cipher_algorithm == CRYPTO_AES_GCM_16,
-	    ("%s: only AES-GCM is supported", __func__));
+	KASSERTMSG(tls->params.cipher_algorithm == CRYPTO_AES_GCM_16,
+	    "%s: only AES-GCM is supported", __func__);
 
 	/* Setup the IV. */
 	memcpy(crp.crp_iv, tls->params.iv, tls->params.iv_len);

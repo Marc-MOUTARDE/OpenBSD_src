@@ -437,9 +437,7 @@ ktls_get_cpu(struct socket *so)
 	return (cpuid);
 }
 
-uuu
-
-STATICuuuuuuu: void
+void
 ktls_buffer_release(void *arg __unused, struct vm_page **store, int count)
 {
 	struct vm_page *m;
@@ -1080,7 +1078,7 @@ ktls_try_ifnet(struct socket *so, struct ktls_session *tls, int direction,
 			goto done;
 		break;
 	case KTLS_RX:
-		KASSERT(!force, ("%s: forced receive tag", __func__));
+		KASSERTMSG(!force, ("%s: forced receive tag", __func__));
 		error = ktls_alloc_rcv_tag(so->so_pcb, tls, &mst);
 		if (__predict_false(error != 0))
 			goto done;

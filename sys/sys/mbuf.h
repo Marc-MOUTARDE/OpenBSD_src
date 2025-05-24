@@ -140,6 +140,15 @@ struct	pkthdr {
 	struct pkthdr_pf	 pf;
 };
 
+#if defined(__LP64__)
+#define MBUF_PEXT_MAX_PGS 40 / sizeof(paddr_t)
+#else
+#define MBUF_PEXT_MAX_PGS 64 / sizeof(paddr_t)
+#endif
+
+#define MBUF_PEXT_HDR_LEN 23
+#define MBUF_PEXT_TRAIL_LEN 64
+
 /* description of external storage mapped into mbuf, valid if M_EXT set */
 struct mbuf_ext {
 	caddr_t	ext_buf;		/* start of buffer */
@@ -154,6 +163,11 @@ struct mbuf_ext {
 	int ext_oline;
 	int ext_nline;
 #endif
+    struct {
+	paddr_t ext_pg_pa[MBUF_PEXT_MAX_PGS];
+	char    ext_pg_trail[MBUF_PEXT_TRAIL_LEN];
+	char    ext_pg_hdr[MBUF_PEXT_HDR_LEN];
+    };
 };
 
 struct mbuf {
@@ -192,7 +206,7 @@ struct mbuf {
 		char	M_databuf[MLEN];		/* !M_PKTHDR, !M_EXT */
 	} M_dat;
 };
-define	m_next		m_hdr.mh_next
+#define	m_next		m_hdr.mh_next
 #define	m_len		m_hdr.mh_len
 #define	m_data		m_hdr.mh_data
 #define	m_type		m_hdr.mh_type
@@ -201,7 +215,12 @@ define	m_next		m_hdr.mh_next
 #define	m_pkthdr	M_dat.MH.MH_pkthdr
 #define	m_ext		M_dat.MH.MH_dat.MH_ext
 #define	m_pktdat	M_dat.MH.MH_dat.MH_databuf
-#define	m_dat		M_dat.M_databuf
+#define m_dat           M_dat.M_databuf
+#define m_epg_pa        M_dat.MH.MH_dat.MH_ext.ext_pg_pa
+#define m_epg_trail     M_dat.MH.MH_dat.MH_ext.ext_pg_trail
+#define m_epg_hdr       M_dat.MH.MH_dat.MH_ext.ext_pg_hdr
+#define m_epg_hdrlen    M_dat.MH.MH_dat.m_epg_hdrlen
+#define m_epg_trllen    M_dat.MH.MH_dat.m_epg_trllen
 
 #define m_epg_npgs      M_dat.MH.MH_dat.m_epg_npgs
 #define m_epg_flags     M_dat.MH.MH_dat.m_epg_flags
