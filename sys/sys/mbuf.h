@@ -227,7 +227,7 @@ struct mbuf {
 #define m_epg_last_len  M_dat.MH.MH_dat.m_epg_last_len
 #define m_epg_1st_off   M_dat.MH.MH_dat.m_epg_1st_off
 #define m_epg_seqno     M_dat.MH.MH_dat.m_epg_seqno
-#define m_epg_seqno     M_dat.MH.MH_dat.m_epg_record_type
+#define m_epg_record_type    M_dat.MH.MH_dat.m_epg_record_type
 
 /* mbuf flags */
 #define	M_EXT		0x0001	/* has associated external storage */

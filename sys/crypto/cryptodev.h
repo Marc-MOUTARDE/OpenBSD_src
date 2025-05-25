@@ -203,6 +203,7 @@ struct cryptop {
 	int crp_aad_length;
 
 	char crp_iv[EALG_MAX_BLOCK_LEN];
+	int crp_iv_start;
 };
 
 #define CRYPTO_BUF_IOV		0x1
