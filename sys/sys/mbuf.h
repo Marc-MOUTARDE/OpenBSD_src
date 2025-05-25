@@ -226,6 +226,8 @@ struct mbuf {
 #define m_epg_flags     M_dat.MH.MH_dat.m_epg_flags
 #define m_epg_last_len  M_dat.MH.MH_dat.m_epg_last_len
 #define m_epg_1st_off   M_dat.MH.MH_dat.m_epg_1st_off
+#define m_epg_seqno     M_dat.MH.MH_dat.m_epg_seqno
+#define m_epg_seqno     M_dat.MH.MH_dat.m_epg_record_type
 
 /* mbuf flags */
 #define	M_EXT		0x0001	/* has associated external storage */
@@ -515,6 +517,16 @@ m_freemp(struct mbuf **mp)
 
 	*mp = NULL;
 	return m_freem(m);
+}
+
+static inline int
+m_epg_pagelen(const struct mbuf *m, int pidx, int pgoff)
+{
+	if (pidx == m->m_epg_npgs - 1) {
+		return (m->m_epg_last_len);
+	} else {
+		return (PAGE_SIZE - pgoff);
+	}
 }
 
 /* Packet tag routines */

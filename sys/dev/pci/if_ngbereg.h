@@ -582,7 +582,7 @@
 
 /* Compatibility glue. */
 #define msec_delay(x)		DELAY(1000 * (x))
-#define roundup2(size, unit)	(((size) + (unit) - 1) & ~((unit) - 1))
+// #define roundup2(size, unit)	(((size) + (unit) - 1) & ~((unit) - 1))
 #define le32_to_cpup(x)		(le32toh(*(const uint32_t *)(x)))
 #define le32_to_cpus(x)							\
 	do { *((uint32_t *)(x)) = le32_to_cpup((x)); } while (0)

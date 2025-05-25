@@ -171,6 +171,11 @@ struct cryptop {
 	int		crp_olen;	/* Result total length */
 	int		crp_alloctype;	/* Type of buf to allocate if needed */
 
+#define CRYPTO_F_CBIMM 0x10
+#define CRYPTO_F_DONE 0x20
+#define CRYPTO_F_CBIFSYNC 0x40
+#define CRYPTO_F_ASYNC_ORDERED 0x100
+#define CRYPTO_F_IV_SEPARATE 0x200
 	int		crp_flags;
 
 #define CRYPTO_F_IMBUF	0x0001	/* Input/output are mbuf chains, otherwise contig */
@@ -184,6 +189,20 @@ struct cryptop {
 	int		 crp_ndescalloc;/* Amount of descriptors allocated */
 
 	caddr_t		crp_mac;
+
+#define CRYPTO_OP_COMPUTE_DIGEST 0x00
+#define CRYPTO_OP_VERIFY_DIGEST 0x02
+
+	int crp_op;
+	int crp_payload_length;
+	int crp_payload_start;
+	int crp_digest_start;
+
+	void *crp_aad;
+	int crp_aad_start;
+	int crp_aad_length;
+
+	char crp_iv[EALG_MAX_BLOCK_LEN];
 };
 
 #define CRYPTO_BUF_IOV		0x1

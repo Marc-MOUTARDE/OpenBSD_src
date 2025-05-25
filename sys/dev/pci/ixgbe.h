@@ -119,7 +119,7 @@ typedef int	boolean_t;
 
 /* Compat glue */
 #define PCIR_BAR(_x)	(0x10 + (_x) * 4)
-#define roundup2(size, unit) (((size) + (unit) - 1) & ~((unit) - 1))
+// #define roundup2(size, unit) (((size) + (unit) - 1) & ~((unit) - 1))
 #define usec_delay(x) delay(x)
 #define msec_delay(x) delay(1000 * (x))
 

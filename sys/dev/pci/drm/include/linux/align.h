@@ -5,7 +5,7 @@
 
 #include <sys/param.h>
 
-#define roundup2(x, y) (((x) + ((y) - 1)) & (~((__typeof(x))(y) - 1)))
+// #define roundup2(x, y) (((x) + ((y) - 1)) & (~((__typeof(x))(y) - 1)))
 #define rounddown2(x, y) ((x) & ~((__typeof(x))(y) - 1))
 
 #undef ALIGN

@@ -218,7 +218,7 @@ ufs_lookup(void *v)
 			    (dp->i_offset & bmask));
 			goto foundentry;
 		case ENOENT:
-#define roundup2(x, y)	(((x)+((y)-1))&(~((y)-1))) /* if y is powers of two */
+// #define roundup2(x, y)	(((x)+((y)-1))&(~((y)-1))) /* if y is powers of two */
 			dp->i_offset = roundup2(DIP(dp, size), DIRBLKSIZ);
 			goto notfound;
 		default:

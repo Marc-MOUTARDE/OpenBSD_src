@@ -327,8 +327,7 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_ocf_encrypt_state *state,
 	iov[0].iov_len = sizeof(*ad);
 	pgoff = m->m_epg_1st_off;
 	for (i = 0; i < m->m_epg_npgs; i++, pgoff = 0) {
-		iov[i + 1].iov_base = (void *)PHYS_TO_DMAP(m->m_epg_pa[i] +
-		    pgoff);
+		iov[i + 1].iov_base = (void *)(m->m_epg_pa[i] + pgoff);
 		iov[i + 1].iov_len = m_epg_pagelen(m, i, pgoff);
 	}
 	iov[m->m_epg_npgs + 1].iov_base = m->m_epg_trail;
@@ -337,7 +336,7 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_ocf_encrypt_state *state,
 	uio->uio_iovcnt = m->m_epg_npgs + 2;
 	uio->uio_offset = 0;
 	uio->uio_segflg = UIO_SYSSPACE;
-	uio->uio_td = curthread;
+	uio->uio_procp = curproc;
 	uio->uio_resid = sizeof(*ad) + tls_comp_len + os->mac_len;
 
         crp->crp_payload_start = 0;
@@ -382,7 +381,7 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_ocf_encrypt_state *state,
 		uio->uio_iovcnt = outiovcnt;
 		uio->uio_offset = 0;
 		uio->uio_segflg = UIO_SYSSPACE;
-		uio->uio_td = curthread;
+		uio->uio_procp = curproc;
 		uio->uio_resid = crp->crp_payload_length;
 		crypto_use_output_uio(crp, uio);
 	}
@@ -415,7 +414,7 @@ ktls_ocf_tls_cbc_encrypt(struct ktls_ocf_encrypt_state *state,
 }
 
 static int
-check_padding(void *arg, void *data, u_int len)
+check_padding(char *arg, char *data, u_int len)
 {
 	uint8_t pad = *(uint8_t *)arg;
 	const char *cp = data;
@@ -508,7 +507,7 @@ ktls_ocf_tls_cbc_decrypt(struct ktls_session *tls,
 	uio.uio_iov = iov;
 	uio.uio_iovcnt = i;
 	uio.uio_segflg = UIO_SYSSPACE;
-	uio.uio_td = curthread;
+	uio.uio_procp = curproc;
 	uio.uio_resid = sizeof(ad) + tls_len - AES_BLOCK_LEN;
 
 	/* Initialize the AAD. */
@@ -526,7 +525,7 @@ ktls_ocf_tls_cbc_decrypt(struct ktls_session *tls,
 	crypto_use_uio(&crp, &uio);
 	error = ktls_ocf_dispatch(os, &crp);
 
-	free(iov, M_KTLS_OCF);
+	free(iov, M_KTLS_OCF, iovcnt * sizeof(*iov));
 	return (error);
 }
 
@@ -591,7 +590,7 @@ ktls_ocf_tls12_aead_encrypt(struct ktls_ocf_encrypt_state *state,
 		uio->uio_iovcnt = outiovcnt;
 		uio->uio_offset = 0;
 		uio->uio_segflg = UIO_SYSSPACE;
-		uio->uio_td = curthread;
+		uio->uio_procp = curproc;
 		uio->uio_resid = crp->crp_payload_length + tls->params.tls_tlen;
 		crypto_use_output_uio(crp, uio);
 	} else
@@ -814,7 +813,7 @@ ktls_ocf_tls13_aead_encrypt(struct ktls_ocf_encrypt_state *state,
 		uio->uio_iovcnt = outiovcnt;
 		uio->uio_offset = 0;
 		uio->uio_segflg = UIO_SYSSPACE;
-		uio->uio_td = curthread;
+		uio->uio_procp = curproc;
 		uio->uio_resid = m->m_len - m->m_epg_hdrlen;
 		crypto_use_output_uio(crp, uio);
 	} else

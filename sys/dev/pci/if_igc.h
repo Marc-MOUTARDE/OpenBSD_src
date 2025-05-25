@@ -188,7 +188,7 @@
 #define DEBUGFUNC(F)		DEBUGOUT(F "\n")
 
 /* Compatibility glue. */
-#define roundup2(size, unit)	(((size) + (unit) - 1) & ~((unit) - 1))
+// #define roundup2(size, unit)	(((size) + (unit) - 1) & ~((unit) - 1))
 #define msec_delay(x)		DELAY(1000 * (x))
 
 #define IGC_MAX_SCATTER		40

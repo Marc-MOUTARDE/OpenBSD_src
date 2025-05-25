@@ -191,6 +191,7 @@
 #define	howmany(x, y)	(((x)+((y)-1))/(y))
 #endif
 #define	roundup(x, y)	((((x)+((y)-1))/(y))*(y))
+#define roundup2(x, y)  __builtin_align_up(x, y)
 #define powerof2(x)	((((x)-1)&(x))==0)
 
 /* Macros for min/max. */
