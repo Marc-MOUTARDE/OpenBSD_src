@@ -12157,9 +12157,11 @@ iwm_activate(struct device *self, int act)
 	int err = 0;
 
 	switch (act) {
-    case DVACT_SUSPEND:
+	case DVACT_SUSPEND:
 	case DVACT_QUIESCE:
+		printf("%s: try to stop\n", DEVNAME(sc));
 		if (ifp->if_flags & IFF_RUNNING) {
+			printf("%s: running, try to stop\n", DEVNAME(sc));
 			rw_enter_write(&sc->ioctl_rwl);
 			iwm_stop(ifp);
 			rw_exit(&sc->ioctl_rwl);
