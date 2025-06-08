@@ -12175,6 +12175,9 @@ iwm_activate(struct device *self, int act)
 				    DEVNAME(sc));
 		}
 		break;
+    default:
+        printf("%s: Unhandled action: %d\n", DEVNAME(sc), act);
+        break;
 	}
 
 	return 0;
