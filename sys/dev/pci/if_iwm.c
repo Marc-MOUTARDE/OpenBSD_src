@@ -12157,6 +12157,7 @@ iwm_activate(struct device *self, int act)
 	int err = 0;
 
 	switch (act) {
+    case DVACT_SUSPEND:
 	case DVACT_QUIESCE:
 		if (ifp->if_flags & IFF_RUNNING) {
 			rw_enter_write(&sc->ioctl_rwl);
