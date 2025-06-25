@@ -45,6 +45,7 @@ option		FUSE		# FUSE
 option		SOCKET_SPLICE	# Socket Splicing for TCP and UDP
 option		TCP_ECN		# Explicit Congestion Notification for TCP
 option		TCP_SIGNATURE	# TCP MD5 Signatures, for BGP routing sessions
+option 		KERN_TLS	# Kernel TLS
 
 option		INET6		# IPv6
 option		IPSEC		# IPsec
