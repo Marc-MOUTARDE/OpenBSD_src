@@ -1,3 +1,6 @@
 **/obj
 **/tags
 **/CVS
+
+**/.cache/
+**/compile_commands.json
