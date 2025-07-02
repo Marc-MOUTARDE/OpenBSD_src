@@ -219,4 +219,17 @@ struct tcp_info {
 #define	TCP_INFO		0x09   /* retrieve tcp_info structure */
 #define	TCP_NOPUSH		0x10   /* don't push last block of write */
 
+/*
+ * Kernel TLS
+ */
+/* TLS modes for TCP_TXTLS_MODE */
+#define TCP_TLS_MODE_NONE 0,
+#define TCP_TLS_MODE_SW 1
+#define TCP_TLS_MODE_IFNET 2
+#define TCP_TLS_MODE_TOE 3
+
+/* TCP Control message types */
+#define TLS_SET_RECORD_TYPE 1
+#define TLS_GET_RECORD 2
+
 #endif /* _NETINET_TCP_H_ */

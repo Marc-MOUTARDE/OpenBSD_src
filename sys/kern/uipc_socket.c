@@ -51,6 +51,10 @@
 #include <sys/rwlock.h>
 #include <sys/time.h>
 #include <sys/refcnt.h>
+#ifdef KERN_TLS
+#include <netinet/tcp.h>
+#include <sys/ktls.h>
+#endif
 
 #ifdef DDB
 #include <machine/db_machdep.h>
@@ -594,6 +598,14 @@ sosend(struct socket *so, struct mbuf *addr, struct uio *uio, struct mbuf *top,
 	size_t resid;
 	int error;
 	int atomic = sosendallatonce(so) || top;
+#ifdef KERN_TLS
+	struct ktls_session *tls;
+	int tls_enc_count, tls_send_flag;
+	uint8_t tls_rtype;
+
+	tls = NULL;
+	tls_rtype = TLS_RLTYPE_APP;
+#endif
 
 	if (uio)
 		resid = uio->uio_resid;
@@ -625,6 +637,33 @@ sosend(struct socket *so, struct mbuf *addr, struct uio *uio, struct mbuf *top,
 	}
 
 #define	snderr(errno)	{ error = errno; goto release; }
+
+#ifdef KERN_TLS
+	tls_send_flag = 0;
+	tls = ktls_hold(so->so_snd.sb_tls_info);
+	if (tls) {
+		if (tls->mode == TCP_TLS_MODE_SW) {
+			tls_send_flag = PRUS_NOTREADY;
+		}
+
+		if (control) {
+			struct cmsghdr *cm = mtod(control, struct cmsghdr*);
+
+			if (clen >= sizeof(*cm) && cm->cmsg_type == TLS_SET_RECORD_TYPE) {
+				tls_rtype = *((uint8_t*)CMSG_DATA(cm));
+				clen = 0;
+				m_freem(control);
+				control = NULL;
+				atomic = 1;
+			}
+		}
+
+		if (resid == 0 && !ktls_permit_empty_frames(tls)) {
+			error = EINVAL;
+			goto out;
+		}
+	}
+#endif
 
 restart:
 	if ((error = sblock(&so->so_snd, SBLOCKWAIT(flags))) != 0)
@@ -678,12 +717,35 @@ restart:
 				resid = 0;
 				if (flags & MSG_EOR)
 					top->m_flags |= M_EOR;
+#ifdef KERN_TLS
+				if (tls) {
+					ktls_frame(top, tls, &tls_enc_count, tls_rtype);
+					tls_rtype = TLS_RLTYPE_APP;
+				}
+#endif
 			} else {
-				mtx_leave(&so->so_snd.sb_mtx);
-				error = m_getuio(&top, atomic, space, uio);
-				mtx_enter(&so->so_snd.sb_mtx);
-				if (error)
-					goto release;
+#ifdef KERN_TLS
+				if (tls) {
+					mtx_leave(&so->so_snd.sb_mtx);
+					error = m_getuio(&top, atomic, space, uio);
+					mtx_enter(&so->so_snd.sb_mtx);
+					if (error)
+						goto release;
+
+					if (top) {
+						ktls_frame(top, tls, &tls_enc_count, tls_rtype);
+					}
+					tls_rtype = TLS_RLTYPE_APP;
+				} else {
+#endif
+					mtx_leave(&so->so_snd.sb_mtx);
+					error = m_getuio(&top, atomic, space, uio);
+					mtx_enter(&so->so_snd.sb_mtx);
+					if (error)
+						goto release;
+#ifdef KERN_TLS
+				}
+#endif
 				space -= top->m_pkthdr.len;
 				resid = uio->uio_resid;
 				if (flags & MSG_EOR)
@@ -695,12 +757,28 @@ restart:
 				top->m_flags |= M_ZEROIZE;
 			mtx_leave(&so->so_snd.sb_mtx);
 			solock_shared(so);
-			if (flags & MSG_OOB)
+
+#ifdef KERN_TLS
+			top->m_flags |= tls_send_flag;
+#endif
+
+			if (flags & MSG_OOB) 
 				error = pru_sendoob(so, top, addr, control);
 			else
 				error = pru_send(so, top, addr, control);
 			sounlock_shared(so);
 			mtx_enter(&so->so_snd.sb_mtx);
+#ifdef KERN_TLS
+			if (tls && tls->mode == TCP_TLS_MODE_SW) {
+				if (error) {
+					m_freem(top);
+					top = NULL;
+				} else {
+					soref(so);
+					ktls_enqueue(top, so, tls_enc_count);
+				}
+			}
+#endif
 			clen = 0;
 			control = NULL;
 			top = NULL;
@@ -714,6 +792,9 @@ release:
 	mtx_leave(&so->so_snd.sb_mtx);
 	sbunlock(&so->so_snd);
 out:
+#ifdef KERN_TLS
+	ktls_free(tls);
+#endif
 	m_freem(top);
 	m_freem(control);
 	return (error);
@@ -876,7 +957,6 @@ bad:
 	}
 	if (mp)
 		*mp = NULL;
-
 restart:
 	if ((error = sblock(&so->so_rcv, SBLOCKWAIT(flags))) != 0)
 		return (error);
@@ -922,7 +1002,11 @@ restart:
 		if (so->so_rcv.sb_state & SS_CANTRCVMORE) {
 			if (m)
 				goto dontblock;
+#ifdef KERN_TLS
+			else if (so->so_rcv.sb_tlsdcc == 0 && so->so_rcv.sb_tlscc == 0)
+#else
 			else if (so->so_rcv.sb_cc == 0)
+#endif
 				goto release;
 		}
 		for (; m; m = m->m_next)
@@ -996,6 +1080,34 @@ dontblock:
 			sbsync(&so->so_rcv, nextrecord);
 		}
 	}
+#ifdef KERN_TLS
+	if (m && m->m_type == MT_CONTROL) {
+		struct cmsghdr *cmsg;
+		struct tls_get_record tgr;
+
+		/*
+		 * For MSG_TLSAPPDATA, check for an alert record.
+		 * If found, return ENXIO without removing
+		 * it from the receive queue.  This allows a subsequent
+		 * call without MSG_TLSAPPDATA to receive it.
+		 * Note that, for TLS, there should only be a single
+		 * control mbuf with the TLS_GET_RECORD message in it.
+		 */
+		if (flags & MSG_TLSAPPDATA) {
+			cmsg = mtod(m, struct cmsghdr *);
+			if (cmsg->cmsg_type == TLS_GET_RECORD &&
+			    cmsg->cmsg_len == CMSG_LEN(sizeof(tgr))) {
+				memcpy(&tgr, CMSG_DATA(cmsg), sizeof(tgr));
+				if (__predict_false(tgr.tls_type ==
+				    TLS_RLTYPE_ALERT)) {
+					error = ENXIO;
+					goto release;
+				}
+			}
+		}
+	}
+#endif
+
 	while (m && m->m_type == MT_CONTROL && error == 0) {
 		int skip = 0;
 		if (flags & MSG_PEEK) {

@@ -511,6 +511,7 @@ struct timespec;
 #define	MSG_NOSIGNAL		0x400	/* do not send SIGPIPE */
 #define	MSG_CMSG_CLOEXEC	0x800	/* set FD_CLOEXEC on received fds */
 #define	MSG_WAITFORONE		0x1000	/* nonblocking but wait for one msg */
+#define MSG_TLSAPPDATA		0x200000 /* do not soreceive() alert rec. (TLS) */
 
 /*
  * Header for ancillary data objects in msg_control buffer.

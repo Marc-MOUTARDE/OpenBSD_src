@@ -226,6 +226,14 @@ char	*prcrequests[] = {
 };
 #endif
 
+typedef enum {
+	PRUS_OBB = 1,
+	PRUS_EOF = 2,
+	PRUS_MORETOCOME = 4,
+	PRUS_NOTREADY = 8,
+	PRUS_IPV6 = 16
+} pr_send_flags_t;
+
 /*
  * The arguments to ctloutput are:
  *	(*protosw[].pr_ctloutput)(req, so, level, optname, optval);

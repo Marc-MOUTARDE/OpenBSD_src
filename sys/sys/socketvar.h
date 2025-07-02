@@ -49,6 +49,8 @@
 typedef	__socklen_t	socklen_t;	/* length type for network syscalls */
 #endif
 
+struct ktls_session;
+
 TAILQ_HEAD(soqhead, socket);
 
 /*
@@ -101,6 +103,9 @@ struct sockbuf {
 	short	sb_state;		/* [m] socket state on sockbuf */
 	uint64_t sb_timeo_nsecs;	/* [m] timeout for read/write */
 	struct klist sb_klist;		/* [m] list of knotes */
+	struct ktls_session *sb_tls_info; /* tls state */
+	uint sb_tlscc; /* tls chain characters */
+	uint sb_tlsdcc; /* characters being decrypted */
 };
 
 #define SB_MAX		(2*1024*1024)	/* default for max chars in sockbuf */
