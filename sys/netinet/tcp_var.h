@@ -204,6 +204,10 @@ struct tcpcb {
 	u_int	t_rcvoopack;		/* out-of-order packets received */
 	u_int	t_sndrexmitpack;	/* retransmit packets sent */
 	u_int	t_sndzerowin;		/* zero-window updates sent */
+
+	uint8_t t_nic_ktls_xmit:1,	/* active nic ktls xmit sessions */
+		t_nic_ktls_xmit_dis:1,  /* disabled nic xmit ktls */
+		t_nic_ktls_spare:6;	/* spare nic ktls */
 };
 
 #define	intotcpcb(ip)	((struct tcpcb *)(ip)->inp_ppcb)

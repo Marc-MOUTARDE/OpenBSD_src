@@ -78,6 +78,9 @@
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/kernel.h>
+#ifdef KERN_TLS
+#include <sys/ktls.h>
+#endif
 
 #include <net/if.h>
 #include <net/if_var.h>
@@ -212,6 +215,9 @@ tcp_output(struct tcpcb *tp)
 	int needect;
 #endif
 	int tso;
+#ifdef KERN_TLS
+	const bool hw_tls = tp->t_nic_ktls_xmit != 0;
+#endif
 
 	if (tp->t_flags & TF_BLOCKOUTPUT) {
 		tp->t_flags |= TF_NEEDOUTPUT;
